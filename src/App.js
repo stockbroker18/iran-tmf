@@ -308,7 +308,7 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
   const oneHourAgo = Date.now() - 60 * 60 * 1000;
   const recentNews = recentHeadlines
     .filter(h => h.date && new Date(h.date).getTime() > oneHourAgo)
-    .slice(0, 40)
+    .slice(0, 30)
     .map(h => `[${h.source?.name || "unknown"}] ${h.title}`)
     .join("\n");
 
@@ -317,54 +317,24 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     return `${b.label}: baseline ${b.fmt(b.value)}${live ? `, current ${b.fmt(live)}` : " (market closed)"}`;
   }).join("; ");
 
-  return `You are a quantitative geopolitical risk analyst specialising in Middle East conflict and financial markets. Today is March 1 2026. Iranian Supreme Leader Khamenei was killed on February 28 2026 in US-Israeli strikes. You are running a real-time transition monitoring framework.
+  return `You are a quantitative geopolitical risk analyst. Today is March 1 2026. Iranian Supreme Leader Khamenei was killed Feb 28 2026 in US-Israeli strikes. Analyse the transition scenario.
 
-CURRENT ASSET PRICES (baseline: Feb 28 2026 close):
-${prices}
+PRICES (Feb 28 baseline): ${prices}
 
-MANUALLY CONFIRMED INDICATORS (${activeInds.length} active):
-${activeInds.length > 0 ? activeInds.map(i => `- [${i.scenario.toUpperCase()}] ${i.label} (weight: ${i.weight})`).join("\n") : "None confirmed yet"}
+CONFIRMED INDICATORS (${activeInds.length}): ${activeInds.length > 0 ? activeInds.map(i => `${i.id}:${i.label}`).join("; ") : "none"}
 
-MILITARY UNIT STATUS:
-${militaryAlerts.length > 0 ? militaryAlerts.map(([u, s]) => `- ${u}: ${s.toUpperCase()}`).join("\n") : "All units nominal"}
+MILITARY: ${militaryAlerts.length > 0 ? militaryAlerts.map(([u,s]) => `${u}=${s}`).join("; ") : "all nominal"}
 
-ECONOMIC TRIGGERS CONFIRMED:
-${econActive.length > 0 ? econActive.map(t => `- ${t.label}`).join("\n") : "None confirmed"}
+ECONOMIC TRIGGERS: ${econActive.length > 0 ? econActive.map(t => t.label).join("; ") : "none"}
 
-NEWS HEADLINES (last 60 minutes):
-${recentNews || "No recent headlines loaded — base analysis on indicators only"}
+HEADLINES (last 60min):
+${recentNews || "none loaded"}
 
 ---
+Reply with ONLY valid JSON, no markdown, no commentary. Use this exact structure:
+{"probabilities":{"status_quo":25,"military_junta":35,"reform":20,"collapse":20},"markets":{"status_quo":{"spx":{"pct_mid":-0.5,"pct_low":-1.5,"pct_high":0.5,"direction":"neutral","timeframe":5,"rationale":"brief reason","ci_label":"-1.5% to +0.5%","isBps":false},"brent":{"pct_mid":4,"pct_low":2,"pct_high":8,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+2% to +8%","isBps":false},"ust5y":{"pct_mid":3,"pct_low":-5,"pct_high":8,"direction":"neutral","timeframe":5,"rationale":"brief reason","ci_label":"-5bps to +8bps","isBps":true},"dxy":{"pct_mid":0.4,"pct_low":0.1,"pct_high":0.9,"direction":"up","timeframe":5,"rationale":"brief reason","ci_label":"+0.1% to +0.9%","isBps":false}},"military_junta":{"spx":{"pct_mid":-4,"pct_low":-6.5,"pct_high":-2.5,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-2.5% to -6.5%","isBps":false},"brent":{"pct_mid":12,"pct_low":8,"pct_high":18,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+8% to +18%","isBps":false},"ust5y":{"pct_mid":-20,"pct_low":-28,"pct_high":-12,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-12bps to -28bps","isBps":true},"dxy":{"pct_mid":2.2,"pct_low":1.2,"pct_high":3.5,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+1.2% to +3.5%","isBps":false}},"reform":{"spx":{"pct_mid":2,"pct_low":0.8,"pct_high":3.5,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+0.8% to +3.5%","isBps":false},"brent":{"pct_mid":-7,"pct_low":-11,"pct_high":-4,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-4% to -11%","isBps":false},"ust5y":{"pct_mid":10,"pct_low":5,"pct_high":18,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+5bps to +18bps","isBps":true},"dxy":{"pct_mid":-1.1,"pct_low":-1.8,"pct_high":-0.5,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-0.5% to -1.8%","isBps":false}},"collapse":{"spx":{"pct_mid":2,"pct_low":-4,"pct_high":6,"direction":"mixed","timeframe":7,"rationale":"brief reason","ci_label":"-4% to +6%","isBps":false},"brent":{"pct_mid":-8,"pct_low":-15,"pct_high":-3,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-3% to -15%","isBps":false},"ust5y":{"pct_mid":12,"pct_low":5,"pct_high":22,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+5bps to +22bps","isBps":true},"dxy":{"pct_mid":-1.6,"pct_low":-2.8,"pct_high":-0.5,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-0.5% to -2.8%","isBps":false}}},"auto_indicators":[],"analyst_summary":"2-3 sentences on current situation and what is driving probabilities.","key_risks":["risk 1","risk 2","risk 3"],"confidence_level":"medium","last_analysed":"${new Date().toISOString()}"}
 
-Based on ALL of the above, provide a full updated analysis in the following EXACT JSON structure. Do not include any text outside the JSON:
-
-{
-  "probabilities": {
-    "status_quo": <integer 0-100>,
-    "military_junta": <integer 0-100>,
-    "reform": <integer 0-100>,
-    "collapse": <integer 0-100>
-  },
-  "markets": {
-    "status_quo":     { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } },
-    "military_junta": { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } },
-    "reform":         { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } },
-    "collapse":       { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } }
-  },
-  "auto_indicators": ["<indicator_id>"],
-  "analyst_summary": "<2-3 paragraph plain-English summary of current situation, key signals driving the probabilities, and key risks to watch in the next 24 hours>",
-  "key_risks": ["<risk 1>", "<risk 2>", "<risk 3>"],
-  "confidence_level": "<low|medium|high>",
-  "last_analysed": "<ISO timestamp>"
-}
-
-Rules:
-- probabilities must sum to exactly 100
-- pct values for equities/oil/dxy are % moves; ust5y values are basis points
-- pct_low and pct_high represent 90% confidence interval bounds
-- auto_indicators should list IDs of any indicators you can infer as active from the headlines (e.g. "s1", "i3") — only include if clearly supported by headline evidence
-- Be specific and data-driven in rationale strings — reference current prices, confirmed signals, and news
-- analyst_summary should explain what changed since baseline and what to watch next`;
+Replace ALL values with your actual analysis. probabilities must sum to 100. rationale strings should be specific to current signals. Keep rationale under 20 words each. analyst_summary 2-3 sentences max.`;
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
@@ -557,7 +527,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + AI · <span style={{ color: "#0f06" }}>v1.5</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + AI · <span style={{ color: "#0f06" }}>v1.6</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· AI ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>

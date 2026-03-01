@@ -24,19 +24,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid JSON in request body" });
   }
 
-  // Convert Anthropic-style messages format to Gemini format
   const userMessage = body.messages?.find(m => m.role === "user")?.content || "";
 
   const geminiBody = {
     contents: [{ parts: [{ text: userMessage }] }],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: 4000,
+      maxOutputTokens: 8192,
     }
   };
 
   try {
-    const model = "gemini-2.5-flash"; // free tier model (updated March 2026)
+    const model = "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const upstream = await fetch(url, {
@@ -50,7 +49,7 @@ export default async function handler(req, res) {
     try {
       data = JSON.parse(text);
     } catch (e) {
-      return res.status(502).json({ error: "Gemini returned non-JSON: " + text.slice(0, 200) });
+      return res.status(502).json({ error: "Gemini returned non-JSON: " + text.slice(0, 300) });
     }
 
     if (!upstream.ok) {
@@ -58,8 +57,13 @@ export default async function handler(req, res) {
       return res.status(upstream.status).json({ error: msg });
     }
 
-    // Extract text from Gemini response and reformat to match what App.js expects
     const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    if (!responseText) {
+      const reason = data?.candidates?.[0]?.finishReason || "unknown";
+      return res.status(500).json({ error: `Gemini returned empty response. Finish reason: ${reason}` });
+    }
+
     return res.status(200).json({
       content: [{ type: "text", text: responseText }]
     });

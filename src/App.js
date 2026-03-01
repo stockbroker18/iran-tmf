@@ -455,7 +455,9 @@ export default function App() {
     setAiError(null);
     try {
       const prompt = buildPrompt(currentChecked, currentMilitary, currentEcon, items, prices);
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+
+      // Call via /api/analyze — Vercel serverless proxy (keeps API key server-side)
+      const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -464,8 +466,13 @@ export default function App() {
           messages: [{ role: "user", content: prompt }],
         }),
       });
-      const data = await response.json();
-      const text = data.content?.map(b => b.text || "").join("") || "";
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${response.status}`);
+      }
+      const data  = await response.json();
+      if (data?.error) throw new Error(data.error.message || "API error");
+      const text  = data.content?.map(b => b.text || "").join("") || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
 
@@ -482,7 +489,7 @@ export default function App() {
       setAiAnalysis({ ...parsed, fetchedAt: new Date().toISOString() });
       setAiTriggerCount(c => c + 1);
     } catch (err) {
-      setAiError(`Analysis failed: ${err.message}. Check API key is valid.`);
+      setAiError(`Analysis failed: ${err.message}`);
     }
     setAiLoading(false);
   }, [setChecked, setLastUpdate, setAiAnalysis]);

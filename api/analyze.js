@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   };
 
   try {
-    const model = "gemini-1.5-flash"; // free tier model
+    const model = "gemini-2.5-flash"; // free tier model (updated March 2026)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const upstream = await fetch(url, {

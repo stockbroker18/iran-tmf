@@ -1,8 +1,8 @@
-// Vercel serverless function — proxies requests to Anthropic API
-// Environment variable required: ANTHROPIC_API_KEY (set in Vercel dashboard)
+// Vercel serverless function — proxies requests to Google Gemini API (free tier)
+// Environment variable required: GEMINI_API_KEY
+// Get a free key at: https://aistudio.google.com/app/apikey (no credit card needed)
 
 export default async function handler(req, res) {
-  // Handle CORS preflight
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -10,10 +10,10 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "ANTHROPIC_API_KEY not set. Go to Vercel project Settings → Environment Variables, add it, then redeploy."
+      error: "GEMINI_API_KEY not set. Go to Vercel project Settings → Environment Variables, add it, then redeploy. Get a free key at aistudio.google.com/app/apikey"
     });
   }
 
@@ -24,15 +24,25 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid JSON in request body" });
   }
 
+  // Convert Anthropic-style messages format to Gemini format
+  const userMessage = body.messages?.find(m => m.role === "user")?.content || "";
+
+  const geminiBody = {
+    contents: [{ parts: [{ text: userMessage }] }],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 4000,
+    }
+  };
+
   try {
-    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+    const model = "gemini-1.5-flash"; // free tier model
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const upstream = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type":      "application/json",
-        "x-api-key":         apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiBody),
     });
 
     const text = await upstream.text();
@@ -40,10 +50,19 @@ export default async function handler(req, res) {
     try {
       data = JSON.parse(text);
     } catch (e) {
-      return res.status(502).json({ error: "Anthropic returned non-JSON: " + text.slice(0, 200) });
+      return res.status(502).json({ error: "Gemini returned non-JSON: " + text.slice(0, 200) });
     }
 
-    return res.status(upstream.status).json(data);
+    if (!upstream.ok) {
+      const msg = data?.error?.message || "Gemini API error";
+      return res.status(upstream.status).json({ error: msg });
+    }
+
+    // Extract text from Gemini response and reformat to match what App.js expects
+    const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return res.status(200).json({
+      content: [{ type: "text", text: responseText }]
+    });
 
   } catch (err) {
     return res.status(500).json({ error: "Proxy fetch failed: " + err.message });

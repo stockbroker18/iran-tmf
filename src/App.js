@@ -1,67 +1,48 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── BASELINE PRICES (Feb 28 2026 close) ─────────────────────────────────────
-// These are the verified closing levels used as the starting point for all impact estimates.
-// The app attempts to update these live via Yahoo Finance query API on load / refresh.
 const BASELINE = {
-  spx:   { value: 6878.88, label: "S&P 500",          unit: "pts",  fmt: v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-  brent: { value: 72.87,   label: "Brent Crude",       unit: "$/bbl",fmt: v => `$${v.toFixed(2)}` },
-  ust5y: { value: 3.512,   label: "5Y Treasury Yield", unit: "%",    fmt: v => `${v.toFixed(3)}%` },
-  dxy:   { value: 97.65,   label: "DXY (USD Index)",   unit: "",     fmt: v => v.toFixed(2) },
+  spx:   { value: 6878.88, label: "S&P 500",          fmt: v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+  brent: { value: 72.87,   label: "Brent Crude",       fmt: v => `$${v.toFixed(2)}` },
+  ust5y: { value: 3.512,   label: "5Y Treasury Yield", fmt: v => `${v.toFixed(3)}%` },
+  dxy:   { value: 97.65,   label: "DXY (USD Index)",   fmt: v => v.toFixed(2) },
 };
 
-
-
-// ─── SCENARIOS ────────────────────────────────────────────────────────────────
-// Each market entry:
-//   pct_low / pct_high  : confidence interval bounds (% move from baseline; bps for ust5y)
-//   pct_mid             : central estimate
-//   direction           : "up" | "down" | "mixed" | "neutral"
-//   timeframe           : days over which the move is expected to play out
-//   rationale           : brief reasoning
-//   ci_label            : human-readable confidence interval string
-const SCENARIOS = [
-  {
-    id: "status_quo", label: "Status Quo / Continuity", color: "#f5a623",
-    desc: "Assembly of Experts names new Supreme Leader within 48hrs", baseScore: 2,
-    markets: {
-      spx:   { direction: "neutral", pct_mid: -0.5,  pct_low: -1.5,  pct_high: +0.5,  timeframe: 5, rationale: "Relief at succession certainty offsets ongoing conflict risk. No de-escalation catalyst. Already-elevated VIX (19.86) limits further compression.", ci_label: "−1.5% to +0.5%" },
-      brent: { direction: "up",      pct_mid: +4.0,  pct_low: +2.0,  pct_high: +8.0,  timeframe: 7, rationale: "Sustained Hormuz risk premium. Brent already elevated at $72.87 (+$10 war premium per JPM). New leader continuity = no supply normalisation.", ci_label: "+2% to +8%" },
-      ust5y: { direction: "neutral", pct_mid: +3,    pct_low: -5,    pct_high: +8,    timeframe: 5, rationale: "No flight-to-safety driver, no resolution. Inflation from oil persists. 5Y yield (3.512%) stays range-bound near Fed funds rate.", ci_label: "−5bps to +8bps", isBps: true },
-      dxy:   { direction: "up",      pct_mid: +0.4,  pct_low: +0.1,  pct_high: +0.9,  timeframe: 5, rationale: "Mild safe-haven bid maintained. DXY (97.65) already weak vs 52w high of 107.56 — limited upside without new catalyst.", ci_label: "+0.1% to +0.9%" },
-    },
-  },
-  {
-    id: "military_junta", label: "Military Junta (IRGC)", color: "#e74c3c",
-    desc: "IRGC declares State of Emergency; Artesh stays in barracks", baseScore: 3,
-    markets: {
-      spx:   { direction: "down",  pct_mid: -4.0,  pct_low: -2.5,  pct_high: -6.5,  timeframe: 7, rationale: "Protracted conflict risk-off shock. Historical analogue: SPX −3.1% in week following Gulf War I outbreak. Elevated VIX (19.86) → 28−35 range. Energy/defence outperform; tech/consumer underperform.", ci_label: "−2.5% to −6.5%" },
-      brent: { direction: "up",    pct_mid: +12.0, pct_low: +8.0,  pct_high: +18.0, timeframe: 7, rationale: "IRGC takeover sharply raises Hormuz closure risk. Strait carries ~21% global oil. Barclays warns 'Brent could hit $100'. Current $72.87 → $81–86 central, $100 tail. Eurasia Group: +$5–10 just from restriction news.", ci_label: "+8% to +18%" },
-      ust5y: { direction: "down",  pct_mid: -20,   pct_low: -12,   pct_high: -28,   timeframe: 7, rationale: "Classic flight-to-safety bid. Historical: 5Y yields fell 15−25bps in first week of Gulf War II. Fed may signal pause. Stagflation risk complicates direction beyond week 1.", ci_label: "−12bps to −28bps", isBps: true },
-      dxy:   { direction: "up",    pct_mid: +2.2,  pct_low: +1.2,  pct_high: +3.5,  timeframe: 7, rationale: "Strong safe-haven surge. EM and commodity currencies sell off. DXY spike of +2−4% is consistent with prior Middle East escalation episodes (2003 Iraq, 2019 Aramco strike).", ci_label: "+1.2% to +3.5%" },
-    },
-  },
-  {
-    id: "reform", label: "Controlled Reform", color: "#3498db",
-    desc: "Appointment of Larijani / Council; release political prisoners", baseScore: 2,
-    markets: {
-      spx:   { direction: "up",   pct_mid: +2.0,  pct_low: +0.8,  pct_high: +3.5,  timeframe: 7, rationale: "De-escalation relief rally. Energy sector (XLE) leads. Geopolitical risk premium unwinds partially. Historical: SPX +1.5−2.5% on comparable ME ceasefire/deal news.", ci_label: "+0.8% to +3.5%" },
-      brent: { direction: "down", pct_mid: -7.0,  pct_low: -4.0,  pct_high: -11.0, timeframe: 7, rationale: "War premium unwinding. Potential Iranian supply return if sanctions partially lifted. Brent gives back ~50−75% of war premium. JPM fair value ~$60 implies $12+ downside from $72.87.", ci_label: "−4% to −11%" },
-      ust5y: { direction: "up",   pct_mid: +10,   pct_low: +5,    pct_high: +18,   timeframe: 7, rationale: "Risk appetite returns, Treasuries sold. Oil price drop reduces inflation expectation. 5Y yield rises as safe-haven unwind dominates.", ci_label: "+5bps to +18bps", isBps: true },
-      dxy:   { direction: "down", pct_mid: -1.1,  pct_low: -0.5,  pct_high: -1.8,  timeframe: 7, rationale: "Risk-on flows into EM, commodity FX. EUR/USD, AUD/USD outperform. DXY gives back safe-haven bid.", ci_label: "−0.5% to −1.8%" },
-    },
-  },
-  {
-    id: "collapse", label: "Regime Collapse", color: "#2ecc71",
-    desc: "General-level defections; seizure of state TV by protesters", baseScore: 1,
-    markets: {
-      spx:   { direction: "mixed", pct_mid: +2.0, pct_low: -4.0,  pct_high: +6.0,  timeframe: 7, rationale: "Sequencing is everything. Day 1−2: risk-off −2 to −4% on chaos and uncertainty. Day 3−7: sharp rally +4 to +6% if pro-West transition confirmed. Net weekly outcome: positive if transition narrative takes hold. Wide CI reflects binary path.", ci_label: "−4% to +6% (path-dependent)" },
-      brent: { direction: "down",  pct_mid: -8.0, pct_low: -3.0,  pct_high: -15.0, timeframe: 7, rationale: "Medium-term most bearish scenario for oil. Iran supply normalisation + Hormuz reopening = structural demand for price lower. But chaotic transition could cause short-term spike. Net: −5 to −15% over the week as normalisation narrative dominates.", ci_label: "−3% to −15%" },
-      ust5y: { direction: "up",    pct_mid: +12,  pct_low: +5,    pct_high: +22,   timeframe: 7, rationale: "Post-chaos: once transition confirmed, inflation expectations ease sharply (Iran supply returns). 5Y yields rise on growth optimism. Initial safety bid reverses quickly.", ci_label: "+5bps to +22bps", isBps: true },
-      dxy:   { direction: "down",  pct_mid: -1.6, pct_low: -0.5,  pct_high: -2.8,  timeframe: 7, rationale: "Strongest risk-on unwind of all scenarios. EM and oil-linked currencies (CAD, NOK, RUB) rally hard. DXY gives back all war-premium safe-haven flows.", ci_label: "−0.5% to −2.8%" },
-    },
-  },
+// ─── STATIC SCENARIO DEFINITIONS (colors, labels, base scores) ───────────────
+const SCENARIO_DEFS = [
+  { id: "status_quo",     label: "Status Quo / Continuity",  color: "#f5a623", desc: "Assembly of Experts names new Supreme Leader within 48hrs", baseScore: 2 },
+  { id: "military_junta", label: "Military Junta (IRGC)",    color: "#e74c3c", desc: "IRGC declares State of Emergency; Artesh stays in barracks",  baseScore: 3 },
+  { id: "reform",         label: "Controlled Reform",        color: "#3498db", desc: "Appointment of Larijani / Council; release political prisoners", baseScore: 2 },
+  { id: "collapse",       label: "Regime Collapse",          color: "#2ecc71", desc: "General-level defections; seizure of state TV by protesters",  baseScore: 1 },
 ];
+
+// ─── DEFAULT MARKET DATA (used until AI overrides) ───────────────────────────
+const DEFAULT_MARKETS = {
+  status_quo: {
+    spx:   { direction: "neutral", pct_mid: -0.5,  pct_low: -1.5,  pct_high: +0.5,  timeframe: 5, rationale: "Relief at succession certainty offsets ongoing conflict risk. No de-escalation catalyst.", ci_label: "-1.5% to +0.5%", isBps: false },
+    brent: { direction: "up",      pct_mid: +4.0,  pct_low: +2.0,  pct_high: +8.0,  timeframe: 7, rationale: "Sustained Hormuz risk premium. New leader continuity means no supply normalisation.", ci_label: "+2% to +8%", isBps: false },
+    ust5y: { direction: "neutral", pct_mid: +3,    pct_low: -5,    pct_high: +8,    timeframe: 5, rationale: "No flight-to-safety driver. 5Y yield stays range-bound.", ci_label: "-5bps to +8bps", isBps: true },
+    dxy:   { direction: "up",      pct_mid: +0.4,  pct_low: +0.1,  pct_high: +0.9,  timeframe: 5, rationale: "Mild safe-haven bid maintained.", ci_label: "+0.1% to +0.9%", isBps: false },
+  },
+  military_junta: {
+    spx:   { direction: "down",  pct_mid: -4.0,  pct_low: -2.5,  pct_high: -6.5,  timeframe: 7, rationale: "Protracted conflict risk-off shock. SPX analogue: -3.1% week of Gulf War I.", ci_label: "-2.5% to -6.5%", isBps: false },
+    brent: { direction: "up",    pct_mid: +12.0, pct_low: +8.0,  pct_high: +18.0, timeframe: 7, rationale: "IRGC takeover raises Hormuz closure risk sharply. Strait carries ~21% global oil.", ci_label: "+8% to +18%", isBps: false },
+    ust5y: { direction: "down",  pct_mid: -20,   pct_low: -12,   pct_high: -28,   timeframe: 7, rationale: "Classic flight-to-safety bid. Historical: 5Y fell 15-25bps in week of Gulf War II.", ci_label: "-12bps to -28bps", isBps: true },
+    dxy:   { direction: "up",    pct_mid: +2.2,  pct_low: +1.2,  pct_high: +3.5,  timeframe: 7, rationale: "Strong safe-haven surge. Consistent with 2003 Iraq, 2019 Aramco strike episodes.", ci_label: "+1.2% to +3.5%", isBps: false },
+  },
+  reform: {
+    spx:   { direction: "up",   pct_mid: +2.0,  pct_low: +0.8,  pct_high: +3.5,  timeframe: 7, rationale: "De-escalation relief rally. Energy sector leads. Geopolitical risk premium unwinds.", ci_label: "+0.8% to +3.5%", isBps: false },
+    brent: { direction: "down", pct_mid: -7.0,  pct_low: -4.0,  pct_high: -11.0, timeframe: 7, rationale: "War premium unwinding. Potential Iranian supply return if sanctions partially lifted.", ci_label: "-4% to -11%", isBps: false },
+    ust5y: { direction: "up",   pct_mid: +10,   pct_low: +5,    pct_high: +18,   timeframe: 7, rationale: "Risk appetite returns, safe-haven unwind. 5Y yields rise as bonds sold.", ci_label: "+5bps to +18bps", isBps: true },
+    dxy:   { direction: "down", pct_mid: -1.1,  pct_low: -0.5,  pct_high: -1.8,  timeframe: 7, rationale: "Risk-on flows into EM and commodity currencies.", ci_label: "-0.5% to -1.8%", isBps: false },
+  },
+  collapse: {
+    spx:   { direction: "mixed", pct_mid: +2.0, pct_low: -4.0,  pct_high: +6.0,  timeframe: 7, rationale: "Binary path: initial risk-off then sharp rally if pro-West transition confirmed.", ci_label: "-4% to +6% (path-dependent)", isBps: false },
+    brent: { direction: "down",  pct_mid: -8.0, pct_low: -3.0,  pct_high: -15.0, timeframe: 7, rationale: "Iran supply normalisation + Hormuz reopening. Short-term spike on chaos, net bearish.", ci_label: "-3% to -15%", isBps: false },
+    ust5y: { direction: "up",    pct_mid: +12,  pct_low: +5,    pct_high: +22,   timeframe: 7, rationale: "Post-chaos: inflation expectations ease as Iran supply returns. 5Y yields rise.", ci_label: "+5bps to +22bps", isBps: true },
+    dxy:   { direction: "down",  pct_mid: -1.6, pct_low: -0.5,  pct_high: -2.8,  timeframe: 7, rationale: "Strongest risk-on unwind. EM and oil-linked currencies outperform.", ci_label: "-0.5% to -2.8%", isBps: false },
+  },
+};
 
 // ─── INDICATORS ───────────────────────────────────────────────────────────────
 const INDICATORS = {
@@ -143,9 +124,9 @@ const CORS_PROXY = "https://api.allorigins.win/get?url=";
 
 // ─── LEADERS ──────────────────────────────────────────────────────────────────
 const LEADERS = [
-  { id: "mojtaba",  name: "Mojtaba Khamenei",  role: "Son of late Supreme Leader",                 scenario: "military_junta", color: "#e74c3c", trajectory: "Hardline Survival",     powerBase: "IRGC & Basij networks cultivated over 20 years",                       strategy: "Hereditary theocracy — clerical shell with military governance",          risk: "CRITICAL — accelerates civil war; violates anti-monarchical founding principles", signal: "Named to any formal leadership role by IRGC or AoE" },
-  { id: "pahlavi",  name: "Reza Pahlavi",       role: "Exiled son of last Shah",                    scenario: "collapse",       color: "#2ecc71", trajectory: "Total Regime Change",   powerBase: "Iranian diaspora + domestic nostalgia; National Council of Iran",        strategy: "Positions as unifier for secular democratic transition, not ruling king",  risk: "MODERATE — requires sustained US backing and street momentum",                signal: "US State Dept or EU Parliament invite for formal consultations" },
-  { id: "larijani", name: "Ali Larijani",        role: "Sec-Gen, Supreme National Security Council", scenario: "reform",         color: "#3498db", trajectory: "Managed De-escalation", powerBase: "IRGC background + diplomatic reputation; bridges hardliners and West",   strategy: "National Salvation Council — concessions to end bombing, preserve state",  risk: "LOW-MODERATE — requires regime consensus that pure force has failed",          signal: "IRIB features him prominently or he meets Artesh leadership publicly" },
+  { id: "mojtaba",  name: "Mojtaba Khamenei",  role: "Son of late Supreme Leader",                 scenario: "military_junta", color: "#e74c3c", trajectory: "Hardline Survival",     powerBase: "IRGC & Basij networks cultivated over 20 years", strategy: "Hereditary theocracy — clerical shell with military governance", risk: "CRITICAL — accelerates civil war; violates anti-monarchical founding principles", signal: "Named to any formal leadership role by IRGC or AoE" },
+  { id: "pahlavi",  name: "Reza Pahlavi",       role: "Exiled son of last Shah",                    scenario: "collapse",       color: "#2ecc71", trajectory: "Total Regime Change",   powerBase: "Iranian diaspora + domestic nostalgia; National Council of Iran", strategy: "Positions as unifier for secular democratic transition, not ruling king", risk: "MODERATE — requires sustained US backing and street momentum", signal: "US State Dept or EU Parliament invite for formal consultations" },
+  { id: "larijani", name: "Ali Larijani",        role: "Sec-Gen, Supreme National Security Council", scenario: "reform",         color: "#3498db", trajectory: "Managed De-escalation", powerBase: "IRGC background + diplomatic reputation; bridges hardliners and West", strategy: "National Salvation Council — concessions to end bombing, preserve state", risk: "LOW-MODERATE — requires regime consensus that pure force has failed", signal: "IRIB features him prominently or he meets Artesh leadership publicly" },
 ];
 
 // ─── MILITARY ─────────────────────────────────────────────────────────────────
@@ -197,20 +178,25 @@ function GlowBar({ value, max, color }) {
   );
 }
 
-function ProbabilityRing({ value, color, label }) {
+function ProbabilityRing({ value, color, label, aiOverride }) {
   const r = 38, c = 2 * Math.PI * r, dash = (Math.min(100, value) / 100) * c;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <svg width={100} height={100} viewBox="0 0 100 100">
-        <circle cx={50} cy={50} r={r} fill="none" stroke="#222" strokeWidth={8} />
-        <circle cx={50} cy={50} r={r} fill="none" stroke={color} strokeWidth={8}
-          strokeDasharray={`${dash} ${c}`} strokeLinecap="round" transform="rotate(-90 50 50)"
-          style={{ transition: "stroke-dasharray 0.6s ease", filter: `drop-shadow(0 0 6px ${color})` }} />
-        <text x={50} y={54} textAnchor="middle" fill={color}
-          style={{ fontSize: 18, fontFamily: "'Courier New', monospace", fontWeight: 700 }}>
-          {Math.round(value)}%
-        </text>
-      </svg>
+      <div style={{ position: "relative" }}>
+        <svg width={100} height={100} viewBox="0 0 100 100">
+          <circle cx={50} cy={50} r={r} fill="none" stroke="#222" strokeWidth={8} />
+          <circle cx={50} cy={50} r={r} fill="none" stroke={color} strokeWidth={8}
+            strokeDasharray={`${dash} ${c}`} strokeLinecap="round" transform="rotate(-90 50 50)"
+            style={{ transition: "stroke-dasharray 0.6s ease", filter: `drop-shadow(0 0 6px ${color})` }} />
+          <text x={50} y={54} textAnchor="middle" fill={color}
+            style={{ fontSize: 18, fontFamily: "'Courier New', monospace", fontWeight: 700 }}>
+            {Math.round(value)}%
+          </text>
+        </svg>
+        {aiOverride && (
+          <div style={{ position: "absolute", top: 0, right: -4, width: 10, height: 10, borderRadius: "50%", background: "#0f0", boxShadow: "0 0 6px #0f0" }} title="AI updated" />
+        )}
+      </div>
       <span style={{ fontSize: 10, color: "#aaa", textAlign: "center", maxWidth: 90, fontFamily: "monospace" }}>{label}</span>
     </div>
   );
@@ -229,21 +215,15 @@ function dirColor(d) {
   return "#3498db";
 }
 
-// ─── MARKET PRICE CARD ────────────────────────────────────────────────────────
-function MarketImpactCard({ asset, mdata, scenarioColor, livePrice, scenarioProb }) {
+// ─── MARKET IMPACT CARD ───────────────────────────────────────────────────────
+function MarketImpactCard({ asset, mdata, livePrice }) {
   const bl = livePrice || BASELINE[asset].value;
   const isBps = mdata.isBps;
   const dc = dirColor(mdata.direction);
-
-  const midLevel  = isBps ? bl + mdata.pct_mid / 100  : bl * (1 + mdata.pct_mid  / 100);
-  const lowLevel  = isBps ? bl + mdata.pct_low / 100  : bl * (1 + mdata.pct_low  / 100);
+  const midLevel  = isBps ? bl + mdata.pct_mid  / 100 : bl * (1 + mdata.pct_mid  / 100);
+  const lowLevel  = isBps ? bl + mdata.pct_low  / 100 : bl * (1 + mdata.pct_low  / 100);
   const highLevel = isBps ? bl + mdata.pct_high / 100 : bl * (1 + mdata.pct_high / 100);
-
-  const midFmt  = BASELINE[asset].fmt(midLevel);
-  const lowFmt  = BASELINE[asset].fmt(Math.min(lowLevel, highLevel));
-  const highFmt = BASELINE[asset].fmt(Math.max(lowLevel, highLevel));
-
-  const midStr  = isBps
+  const midStr = isBps
     ? `${mdata.pct_mid > 0 ? "+" : ""}${mdata.pct_mid}bps`
     : `${mdata.pct_mid > 0 ? "+" : ""}${mdata.pct_mid.toFixed(1)}%`;
 
@@ -253,55 +233,30 @@ function MarketImpactCard({ asset, mdata, scenarioColor, livePrice, scenarioProb
         <span style={{ color: "#666", fontSize: 10, letterSpacing: 1 }}>{BASELINE[asset].label}</span>
         <span style={{ color: dc, fontSize: 18, fontWeight: 700, fontFamily: "monospace" }}>{midStr}</span>
       </div>
-
-      {/* Central estimate with CI bar */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ color: dc, fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
-          Target: {midFmt}
-          <span style={{ color: "#444", fontWeight: 400, marginLeft: 6, fontSize: 10 }}>
-            ({BASELINE[asset].fmt(bl)} baseline)
-          </span>
+          Target: {BASELINE[asset].fmt(midLevel)}
+          <span style={{ color: "#444", fontWeight: 400, marginLeft: 6, fontSize: 10 }}>({BASELINE[asset].fmt(bl)} baseline)</span>
         </div>
-
-        {/* CI visualisation bar */}
         <div style={{ position: "relative", height: 20, background: "#111", borderRadius: 4, overflow: "hidden", marginBottom: 4 }}>
-          {/* full range */}
           <div style={{
             position: "absolute",
             left: `${Math.min(50, 50 + Math.min(mdata.pct_low, mdata.pct_high) * 2)}%`,
             width: `${Math.abs(mdata.pct_high - mdata.pct_low) * 2}%`,
-            height: "100%",
-            background: `${dc}33`,
-            borderRadius: 2,
+            height: "100%", background: `${dc}33`, borderRadius: 2,
           }} />
-          {/* central marker */}
-          <div style={{
-            position: "absolute",
-            left: `${50 + mdata.pct_mid * 2}%`,
-            width: 2,
-            height: "100%",
-            background: dc,
-            boxShadow: `0 0 4px ${dc}`,
-          }} />
-          {/* zero line */}
+          <div style={{ position: "absolute", left: `${50 + mdata.pct_mid * 2}%`, width: 2, height: "100%", background: dc, boxShadow: `0 0 4px ${dc}` }} />
           <div style={{ position: "absolute", left: "50%", width: 1, height: "100%", background: "#333" }} />
         </div>
-
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#555" }}>
-          <span>Bear: {lowFmt} ({mdata.ci_label.split(" to ")[0]})</span>
-          <span>Bull: {highFmt}</span>
+          <span>Bear: {BASELINE[asset].fmt(Math.min(lowLevel, highLevel))}</span>
+          <span>Bull: {BASELINE[asset].fmt(Math.max(lowLevel, highLevel))}</span>
         </div>
       </div>
-
-      {/* Timeframe + rationale */}
-      <div style={{ borderTop: "1px solid #1a1a1a", paddingTop: 6, marginTop: 4 }}>
+      <div style={{ borderTop: "1px solid #1a1a1a", paddingTop: 6 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-          <span style={{ color: "#f5a623", fontSize: 9, background: "#f5a62318", border: "1px solid #f5a62333", padding: "1px 6px", borderRadius: 2 }}>
-            {mdata.timeframe}D WINDOW
-          </span>
-          <span style={{ color: "#555", fontSize: 9, background: "#1a1a1a", padding: "1px 6px", borderRadius: 2 }}>
-            90% CI: {mdata.ci_label}
-          </span>
+          <span style={{ color: "#f5a623", fontSize: 9, background: "#f5a62318", border: "1px solid #f5a62333", padding: "1px 6px", borderRadius: 2 }}>{mdata.timeframe}D WINDOW</span>
+          <span style={{ color: "#555", fontSize: 9, background: "#1a1a1a", padding: "1px 6px", borderRadius: 2 }}>90% CI: {mdata.ci_label}</span>
         </div>
         <div style={{ color: "#666", fontSize: 10, lineHeight: 1.4 }}>{mdata.rationale}</div>
       </div>
@@ -311,30 +266,23 @@ function MarketImpactCard({ asset, mdata, scenarioColor, livePrice, scenarioProb
 
 // ─── LIVE PRICE TICKER ────────────────────────────────────────────────────────
 function LivePriceTicker({ prices, loading, lastFetched, onRefresh }) {
-  const assets = ["spx", "brent", "ust5y", "dxy"];
   return (
     <div style={{ background: "#060a06", border: "1px solid #0f03", borderRadius: 6, padding: "10px 16px", marginBottom: 12, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
       <span style={{ color: "#0f0", fontSize: 10, letterSpacing: 2, flexShrink: 0 }}>LIVE PRICES</span>
-      {assets.map(a => {
+      {Object.entries(BASELINE).map(([a, b]) => {
         const live = prices[a];
-        const base = BASELINE[a].value;
-        const chg  = live ? ((live - base) / base * 100) : null;
+        const chg  = live ? ((live - b.value) / b.value * 100) : null;
         const isUp = chg > 0;
         return (
-          <div key={a} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 90 }}>
-            <span style={{ color: "#555", fontSize: 9, letterSpacing: 1 }}>{BASELINE[a].label.toUpperCase()}</span>
+          <div key={a} style={{ display: "flex", flexDirection: "column", minWidth: 90 }}>
+            <span style={{ color: "#555", fontSize: 9, letterSpacing: 1 }}>{b.label.toUpperCase()}</span>
             <span style={{ color: live ? (isUp ? "#2ecc71" : "#e74c3c") : "#444", fontSize: 12, fontWeight: 700, fontFamily: "monospace" }}>
-              {live ? BASELINE[a].fmt(live) : BASELINE[a].fmt(base)}
-              {loading && !live && <span style={{ color: "#333", marginLeft: 4 }}>...</span>}
+              {live ? b.fmt(live) : b.fmt(b.value)}
             </span>
-            {chg !== null && (
-              <span style={{ color: isUp ? "#2ecc71" : "#e74c3c", fontSize: 9 }}>
-                {isUp ? "+" : ""}{chg.toFixed(2)}% vs baseline
-              </span>
-            )}
-            {!live && !loading && (
-              <span style={{ color: "#333", fontSize: 9 }}>baseline</span>
-            )}
+            {chg !== null
+              ? <span style={{ color: isUp ? "#2ecc71" : "#e74c3c", fontSize: 9 }}>{isUp ? "+" : ""}{chg.toFixed(2)}% vs baseline</span>
+              : <span style={{ color: "#333", fontSize: 9 }}>Feb 28 baseline</span>
+            }
           </div>
         );
       })}
@@ -350,15 +298,82 @@ function LivePriceTicker({ prices, loading, lastFetched, onRefresh }) {
 }
 
 const card = { background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6, padding: 16, marginBottom: 12 };
-const TABS = ["dashboard", "markets", "live feed", "indicators", "leaders", "military", "economic", "notes"];
+const TABS = ["dashboard", "ai analysis", "markets", "live feed", "indicators", "leaders", "military", "economic", "notes"];
+
+// ─── BUILD AI PROMPT ──────────────────────────────────────────────────────────
+function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadlines, livePrices) {
+  const activeInds = ALL_INDICATORS.filter(i => checkedIndicators[i.id]);
+  const militaryAlerts = Object.entries(militaryRisk).filter(([, v]) => v !== "nominal");
+  const econActive = ECON_TRIGGERS.filter(t => econTriggers[t.id]);
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  const recentNews = recentHeadlines
+    .filter(h => h.date && new Date(h.date).getTime() > oneHourAgo)
+    .slice(0, 40)
+    .map(h => `[${h.source?.name || "unknown"}] ${h.title}`)
+    .join("\n");
+
+  const prices = Object.entries(BASELINE).map(([k, b]) => {
+    const live = livePrices[k];
+    return `${b.label}: baseline ${b.fmt(b.value)}${live ? `, current ${b.fmt(live)}` : " (market closed)"}`;
+  }).join("; ");
+
+  return `You are a quantitative geopolitical risk analyst specialising in Middle East conflict and financial markets. Today is March 1 2026. Iranian Supreme Leader Khamenei was killed on February 28 2026 in US-Israeli strikes. You are running a real-time transition monitoring framework.
+
+CURRENT ASSET PRICES (baseline: Feb 28 2026 close):
+${prices}
+
+MANUALLY CONFIRMED INDICATORS (${activeInds.length} active):
+${activeInds.length > 0 ? activeInds.map(i => `- [${i.scenario.toUpperCase()}] ${i.label} (weight: ${i.weight})`).join("\n") : "None confirmed yet"}
+
+MILITARY UNIT STATUS:
+${militaryAlerts.length > 0 ? militaryAlerts.map(([u, s]) => `- ${u}: ${s.toUpperCase()}`).join("\n") : "All units nominal"}
+
+ECONOMIC TRIGGERS CONFIRMED:
+${econActive.length > 0 ? econActive.map(t => `- ${t.label}`).join("\n") : "None confirmed"}
+
+NEWS HEADLINES (last 60 minutes):
+${recentNews || "No recent headlines loaded — base analysis on indicators only"}
+
+---
+
+Based on ALL of the above, provide a full updated analysis in the following EXACT JSON structure. Do not include any text outside the JSON:
+
+{
+  "probabilities": {
+    "status_quo": <integer 0-100>,
+    "military_junta": <integer 0-100>,
+    "reform": <integer 0-100>,
+    "collapse": <integer 0-100>
+  },
+  "markets": {
+    "status_quo":     { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } },
+    "military_junta": { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } },
+    "reform":         { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } },
+    "collapse":       { "spx": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "brent": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false }, "ust5y": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": true }, "dxy": { "pct_mid": <number>, "pct_low": <number>, "pct_high": <number>, "direction": "<up|down|neutral|mixed>", "timeframe": <days>, "rationale": "<string>", "ci_label": "<string>", "isBps": false } }
+  },
+  "auto_indicators": ["<indicator_id>"],
+  "analyst_summary": "<2-3 paragraph plain-English summary of current situation, key signals driving the probabilities, and key risks to watch in the next 24 hours>",
+  "key_risks": ["<risk 1>", "<risk 2>", "<risk 3>"],
+  "confidence_level": "<low|medium|high>",
+  "last_analysed": "<ISO timestamp>"
+}
+
+Rules:
+- probabilities must sum to exactly 100
+- pct values for equities/oil/dxy are % moves; ust5y values are basis points
+- pct_low and pct_high represent 90% confidence interval bounds
+- auto_indicators should list IDs of any indicators you can infer as active from the headlines (e.g. "s1", "i3") — only include if clearly supported by headline evidence
+- Be specific and data-driven in rationale strings — reference current prices, confirmed signals, and news
+- analyst_summary should explain what changed since baseline and what to watch next`;
+}
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [checked,      setChecked]      = useLocalStorage("iran_tmd_indicators", {});
-  const [militaryRisk, setMilitaryRisk] = useLocalStorage("iran_tmd_military",   {});
-  const [econTriggers, setEconTriggers] = useLocalStorage("iran_tmd_econ",       {});
-  const [notes,        setNotes]        = useLocalStorage("iran_tmd_notes",       "");
-  const [lastUpdate,   setLastUpdate]   = useLocalStorage("iran_tmd_lastupdate",  null);
+  const [checked,        setChecked]        = useLocalStorage("iran_tmd_v15_indicators", {});
+  const [militaryRisk,   setMilitaryRisk]   = useLocalStorage("iran_tmd_v15_military",   {});
+  const [econTriggers,   setEconTriggers]   = useLocalStorage("iran_tmd_v15_econ",       {});
+  const [notes,          setNotes]          = useLocalStorage("iran_tmd_v15_notes",       "");
+  const [lastUpdate,     setLastUpdate]     = useLocalStorage("iran_tmd_v15_lastupdate",  null);
 
   const [activeTab,      setActiveTab]      = useState("dashboard");
   const [feedItems,      setFeedItems]      = useState([]);
@@ -370,14 +385,21 @@ export default function App() {
   const [priceLoading,   setPriceLoading]   = useState(false);
   const [priceFetched,   setPriceFetched]   = useState(null);
 
-  // ── Live price fetch via Yahoo Finance query API ──────────────────────────
+  // AI analysis state
+  const [aiAnalysis,     setAiAnalysis]     = useLocalStorage("iran_tmd_v15_ai",          null);
+  const [aiLoading,      setAiLoading]      = useState(false);
+  const [aiError,        setAiError]        = useState(null);
+  const [aiTriggerCount, setAiTriggerCount] = useState(0);
+  const prevFlaggedCount                    = useRef(0);
+
+  // ── Live price fetch ──────────────────────────────────────────────────────
   const fetchPrices = useCallback(async () => {
     setPriceLoading(true);
     const results = {};
     const symbolMap = { spx: "^GSPC", brent: "BZ=F", ust5y: "^FVX", dxy: "DX-Y.NYB" };
     await Promise.allSettled(Object.entries(symbolMap).map(async ([asset, sym]) => {
       try {
-        const url = `${CORS_PROXY}${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`)}`;
+        const url  = `${CORS_PROXY}${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`)}`;
         const res  = await fetch(url);
         const json = await res.json();
         const body = JSON.parse(json.contents);
@@ -385,10 +407,7 @@ export default function App() {
         if (price) results[asset] = price;
       } catch {}
     }));
-    if (Object.keys(results).length > 0) {
-      setLivePrices(results);
-      setPriceFetched(new Date());
-    }
+    if (Object.keys(results).length > 0) { setLivePrices(results); setPriceFetched(new Date()); }
     setPriceLoading(false);
   }, []);
 
@@ -420,32 +439,92 @@ export default function App() {
     setFeedItems(deduped);
     setLastFetch(new Date());
     setFeedLoading(false);
-    if (deduped.length === 0) setFeedError("No feed data returned. The CORS proxy may be temporarily unavailable — try refreshing in a minute.");
+    if (deduped.length === 0) setFeedError("No feed data returned. CORS proxy may be temporarily unavailable.");
   }, []);
 
-  useEffect(() => { if (activeTab === "live feed") fetchFeeds(); }, [activeTab, fetchFeeds]);
+  useEffect(() => { if (activeTab === "live feed" || activeTab === "ai analysis") fetchFeeds(); }, [activeTab, fetchFeeds]);
   useEffect(() => {
-    if (activeTab !== "live feed") return;
+    if (activeTab !== "live feed" && activeTab !== "ai analysis") return;
     const id = setInterval(fetchFeeds, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [activeTab, fetchFeeds]);
 
-  // ── Scores ────────────────────────────────────────────────────────────────
-  const scores = {};
-  SCENARIOS.forEach(s => { scores[s.id] = s.baseScore; });
-  ALL_INDICATORS.forEach(ind => { if (checked[ind.id]) scores[ind.scenario] = (scores[ind.scenario] || 0) + ind.weight; });
+  // ── AI Analysis ───────────────────────────────────────────────────────────
+  const runAiAnalysis = useCallback(async (items, currentChecked, currentMilitary, currentEcon, prices) => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const prompt = buildPrompt(currentChecked, currentMilitary, currentEcon, items, prices);
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const data = await response.json();
+      const text = data.content?.map(b => b.text || "").join("") || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+
+      // Auto-apply detected indicators
+      if (parsed.auto_indicators && parsed.auto_indicators.length > 0) {
+        setChecked(prev => {
+          const next = { ...prev };
+          parsed.auto_indicators.forEach(id => { next[id] = true; });
+          return next;
+        });
+        setLastUpdate(new Date().toISOString());
+      }
+
+      setAiAnalysis({ ...parsed, fetchedAt: new Date().toISOString() });
+      setAiTriggerCount(c => c + 1);
+    } catch (err) {
+      setAiError(`Analysis failed: ${err.message}. Check API key is valid.`);
+    }
+    setAiLoading(false);
+  }, [setChecked, setLastUpdate, setAiAnalysis]);
+
+  // Auto-trigger when new flagged signals appear
+  useEffect(() => {
+    const flagged = feedItems.filter(i => i.classification).length;
+    if (flagged > prevFlaggedCount.current && feedItems.length > 0) {
+      prevFlaggedCount.current = flagged;
+      runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
+    }
+  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis]);
+
+  // ── Compute probabilities (AI overrides static weights if available) ──────
+  const aiProbs    = aiAnalysis?.probabilities || null;
+  const aiMarkets  = aiAnalysis?.markets       || null;
+
+  // Static score fallback
+  const staticScores = {};
+  SCENARIO_DEFS.forEach(s => { staticScores[s.id] = s.baseScore; });
+  ALL_INDICATORS.forEach(ind => { if (checked[ind.id]) staticScores[ind.scenario] = (staticScores[ind.scenario] || 0) + ind.weight; });
   Object.entries(militaryRisk).forEach(([unit, state]) => {
     const u = MILITARY_UNITS.find(m => m.unit === unit); if (!u) return;
-    if (state === "concerning") { u.branch === "Artesh" ? scores.collapse++ : scores.military_junta++; }
-    if (state === "defected")   { u.branch === "Artesh" ? scores.collapse += 3 : scores.military_junta += 2; }
+    if (state === "concerning") { u.branch === "Artesh" ? staticScores.collapse++ : staticScores.military_junta++; }
+    if (state === "defected")   { u.branch === "Artesh" ? staticScores.collapse += 3 : staticScores.military_junta += 2; }
   });
-  ECON_TRIGGERS.forEach(t => { if (econTriggers[t.id]) scores.collapse = (scores.collapse || 0) + t.collapseAdd; });
+  ECON_TRIGGERS.forEach(t => { if (econTriggers[t.id]) staticScores.collapse = (staticScores.collapse || 0) + t.collapseAdd; });
+  const staticTotal = Object.values(staticScores).reduce((a, b) => a + b, 0);
+  const staticProbs = {};
+  SCENARIO_DEFS.forEach(s => { staticProbs[s.id] = Math.round((staticScores[s.id] / staticTotal) * 100); });
 
-  const totalScore    = Object.values(scores).reduce((a, b) => a + b, 0);
-  const probabilities = {};
-  SCENARIOS.forEach(s => { probabilities[s.id] = Math.round((scores[s.id] / totalScore) * 100); });
-  const leading = SCENARIOS.reduce((a, b) => probabilities[a.id] > probabilities[b.id] ? a : b);
+  const probabilities = aiProbs || staticProbs;
+  const marketData    = aiMarkets || DEFAULT_MARKETS;
 
+  // Build full scenario objects merging static defs with dynamic data
+  const SCENARIOS = SCENARIO_DEFS.map(s => ({
+    ...s,
+    probability: probabilities[s.id] || 0,
+    markets: marketData[s.id] || DEFAULT_MARKETS[s.id],
+  }));
+
+  const leading      = SCENARIOS.reduce((a, b) => a.probability > b.probability ? a : b);
   const checkedCount = Object.values(checked).filter(Boolean).length;
   const flaggedCount = feedItems.filter(i => i.classification).length;
 
@@ -456,8 +535,8 @@ export default function App() {
   const tabStyle = t => ({
     padding: "8px 14px", cursor: "pointer", fontFamily: "monospace", fontSize: 11,
     letterSpacing: 1, textTransform: "uppercase", border: "none", whiteSpace: "nowrap",
-    background: activeTab === t ? "#0f0" : "transparent",
-    color:      activeTab === t ? "#000" : "#0f0",
+    background: activeTab === t ? (t === "ai analysis" ? "#0f0" : "#0f0") : "transparent",
+    color:      activeTab === t ? "#000" : (t === "ai analysis" ? "#0f0" : "#0f0"),
     borderBottom: activeTab === t ? "none" : "1px solid #0f0",
     transition: "all 0.2s",
   });
@@ -470,12 +549,15 @@ export default function App() {
       <div style={{ borderBottom: "1px solid #0f0", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
-          <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>TRANSITION MONITORING FRAMEWORK · OSINT SIMULATION · <span style={{ color: "#0f06" }}>v1.4</span></div>
+          <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
+            TRANSITION MONITORING FRAMEWORK · OSINT + AI · <span style={{ color: "#0f06" }}>v1.5</span>
+            {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· AI ACTIVE ({aiTriggerCount} analyses)</span>}
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
           <Timestamp />
           <div style={{ color: "#555", fontSize: 10 }}>
-            {checkedCount}/{ALL_INDICATORS.length} indicators · updated {lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : "--"}
+            {checkedCount}/{ALL_INDICATORS.length} indicators · {lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : "--"}
           </div>
         </div>
       </div>
@@ -484,8 +566,10 @@ export default function App() {
       <div style={{ background: `${leading.color}18`, borderBottom: `1px solid ${leading.color}44`, padding: "8px 20px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: leading.color, boxShadow: `0 0 10px ${leading.color}`, animation: "pulse 1.5s infinite", flexShrink: 0 }} />
         <span style={{ color: leading.color, fontWeight: 700, letterSpacing: 1 }}>LEADING: {leading.label.toUpperCase()}</span>
-        <span style={{ color: "#666", marginLeft: "auto" }}>{probabilities[leading.id]}% probability</span>
-        {flaggedCount > 0 && <span style={{ color: "#e74c3c", fontSize: 10, border: "1px solid #e74c3c44", padding: "2px 8px", borderRadius: 3 }}>⚡ {flaggedCount} signals in feed</span>}
+        <span style={{ color: "#555", fontSize: 10, marginLeft: 4 }}>{aiProbs ? "· AI-REASONED" : "· STATIC WEIGHTS"}</span>
+        <span style={{ color: "#666", marginLeft: "auto" }}>{leading.probability}% probability</span>
+        {flaggedCount > 0 && <span style={{ color: "#e74c3c", fontSize: 10, border: "1px solid #e74c3c44", padding: "2px 8px", borderRadius: 3 }}>⚡ {flaggedCount} signals</span>}
+        {aiLoading && <span style={{ color: "#0f0", fontSize: 10, animation: "pulse 1s infinite" }}>◈ AI ANALYSING...</span>}
       </div>
 
       {/* Tabs */}
@@ -493,6 +577,7 @@ export default function App() {
         {TABS.map(t => (
           <button key={t} style={tabStyle(t)} onClick={() => setActiveTab(t)}>
             {t === "live feed" && flaggedCount > 0 ? `live feed (${flaggedCount})` : t}
+            {t === "ai analysis" && aiLoading ? " ◈" : ""}
           </button>
         ))}
       </div>
@@ -503,38 +588,170 @@ export default function App() {
         {activeTab === "dashboard" && (
           <div>
             <LivePriceTicker prices={livePrices} loading={priceLoading} lastFetched={priceFetched} onRefresh={fetchPrices} />
+
+            {/* AI status strip */}
+            <div style={{ ...card, background: aiAnalysis ? "#050a05" : "#080808", borderColor: aiAnalysis ? "#0f03" : "#1a1a1a", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: aiAnalysis ? "#0f0" : "#333", boxShadow: aiAnalysis ? "0 0 8px #0f0" : "none", flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <span style={{ color: aiAnalysis ? "#0f0" : "#555", fontSize: 11 }}>
+                  {aiAnalysis ? `AI analysis active — last run ${new Date(aiAnalysis.fetchedAt).toLocaleTimeString()} · ${aiTriggerCount} total runs` : "AI analysis not yet run — go to AI Analysis tab or wait for new signals"}
+                </span>
+                {aiAnalysis && <span style={{ color: "#555", fontSize: 10, marginLeft: 8 }}>confidence: {aiAnalysis.confidence_level?.toUpperCase()}</span>}
+              </div>
+              <button
+                onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
+                disabled={aiLoading}
+                style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "5px 14px", borderRadius: 3, fontSize: 10, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 1 }}>
+                {aiLoading ? "◈ ANALYSING..." : "◈ RUN AI ANALYSIS"}
+              </button>
+            </div>
+
             <div style={card}>
-              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 16 }}>SCENARIO PROBABILITY MATRIX</div>
+              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 16 }}>
+                SCENARIO PROBABILITY MATRIX
+                <span style={{ color: "#333", fontWeight: 400, marginLeft: 8 }}>{aiProbs ? "· AI-REASONED PROBABILITIES" : "· STATIC INDICATOR WEIGHTS"}</span>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 16, justifyItems: "center" }}>
-                {SCENARIOS.map(s => <ProbabilityRing key={s.id} value={probabilities[s.id]} color={s.color} label={s.label} />)}
+                {SCENARIOS.map(s => <ProbabilityRing key={s.id} value={s.probability} color={s.color} label={s.label} aiOverride={!!aiProbs} />)}
               </div>
             </div>
+
+            {aiAnalysis?.analyst_summary && (
+              <div style={{ ...card, borderColor: "#0f03", background: "#050a05" }}>
+                <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>◈ AI ANALYST SUMMARY</div>
+                <div style={{ color: "#aaa", lineHeight: 1.7, fontSize: 12 }}>{aiAnalysis.analyst_summary}</div>
+                {aiAnalysis.key_risks && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ color: "#e74c3c", fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>KEY RISKS (NEXT 24H)</div>
+                    {aiAnalysis.key_risks.map((r, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                        <span style={{ color: "#e74c3c", flexShrink: 0 }}>▸</span>
+                        <span style={{ color: "#888", fontSize: 11 }}>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={card}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>WEIGHTED SIGNAL SCORES</div>
               {SCENARIOS.map(s => (
                 <div key={s.id} style={{ marginBottom: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                     <span style={{ color: s.color }}>{s.label}</span>
-                    <span style={{ color: "#666" }}>score: {scores[s.id]}</span>
+                    <span style={{ color: s.color, fontWeight: 700 }}>{s.probability}%</span>
                   </div>
-                  <GlowBar value={scores[s.id]} max={Math.max(...Object.values(scores))} color={s.color} />
+                  <GlowBar value={s.probability} max={100} color={s.color} />
                   <div style={{ color: "#444", fontSize: 10, marginTop: 3 }}>{s.desc}</div>
                 </div>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))", gap: 12 }}>
-              {[
-                { label: "Security",      items: INDICATORS.security,      color: "#e74c3c" },
-                { label: "Institutional", items: INDICATORS.institutional, color: "#f5a623" },
-                { label: "External",      items: INDICATORS.external,      color: "#3498db" },
-                { label: "Economic",      items: INDICATORS.economic,      color: "#2ecc71" },
-              ].map(b => (
-                <div key={b.label} style={{ ...card, marginBottom: 0 }}>
-                  <div style={{ color: b.color, fontSize: 20, fontWeight: 700 }}>{b.items.filter(i => checked[i.id]).length}/{b.items.length}</div>
-                  <div style={{ color: "#666", fontSize: 10, letterSpacing: 1 }}>{b.label.toUpperCase()} SIGNALS</div>
+          </div>
+        )}
+
+        {/* ══ AI ANALYSIS ══ */}
+        {activeTab === "ai analysis" && (
+          <div>
+            <div style={{ ...card, background: "#050a05", borderColor: "#0f03" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <div style={{ color: "#0f0", fontSize: 12, letterSpacing: 2, marginBottom: 4 }}>◈ REAL-TIME AI ANALYSIS ENGINE</div>
+                  <div style={{ color: "#555", fontSize: 11 }}>
+                    Sends all active indicators, military/economic signals, and last 60 minutes of headlines to Claude for live reasoning.
+                    Auto-triggers when new signals are detected in the feed.
+                  </div>
                 </div>
-              ))}
+                <button
+                  onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
+                  disabled={aiLoading}
+                  style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "8px 20px", borderRadius: 3, fontSize: 11, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 2, boxShadow: aiLoading ? "none" : "0 0 12px #0f04" }}>
+                  {aiLoading ? "◈ ANALYSING IN PROGRESS..." : "◈ RUN FULL ANALYSIS NOW"}
+                </button>
+              </div>
+
+              {/* Context summary */}
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                {[
+                  { label: "Active indicators", value: checkedCount, color: "#f5a623" },
+                  { label: "Military alerts",   value: Object.values(militaryRisk).filter(v => v !== "nominal").length, color: "#e74c3c" },
+                  { label: "Econ triggers",     value: Object.values(econTriggers).filter(Boolean).length, color: "#2ecc71" },
+                  { label: "Headlines (1hr)",   value: feedItems.filter(h => h.date && (Date.now() - new Date(h.date).getTime()) < 3600000).length, color: "#3498db" },
+                ].map(b => (
+                  <div key={b.label} style={{ background: "#080808", border: "1px solid #1a1a1a", borderRadius: 4, padding: "8px 10px" }}>
+                    <div style={{ color: b.color, fontSize: 18, fontWeight: 700 }}>{b.value}</div>
+                    <div style={{ color: "#555", fontSize: 9, letterSpacing: 1 }}>{b.label.toUpperCase()}</div>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            {aiError && <div style={{ ...card, borderColor: "#e74c3c44", color: "#e74c3c" }}>⚠ {aiError}</div>}
+
+            {aiLoading && (
+              <div style={{ ...card, borderColor: "#0f03", textAlign: "center", padding: 40 }}>
+                <div style={{ color: "#0f0", fontSize: 14, letterSpacing: 3, animation: "pulse 1s infinite", marginBottom: 8 }}>◈ CLAUDE IS ANALYSING</div>
+                <div style={{ color: "#555", fontSize: 11 }}>Processing indicators, military signals, economic triggers and recent headlines...</div>
+              </div>
+            )}
+
+            {aiAnalysis && !aiLoading && (
+              <div>
+                {/* Probabilities */}
+                <div style={{ ...card, borderColor: "#0f03" }}>
+                  <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>AI-REASONED SCENARIO PROBABILITIES</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 16, justifyItems: "center", marginBottom: 16 }}>
+                    {SCENARIOS.map(s => <ProbabilityRing key={s.id} value={s.probability} color={s.color} label={s.label} aiOverride={true} />)}
+                  </div>
+                  <div style={{ color: "#444", fontSize: 10, textAlign: "center" }}>
+                    Analysed {new Date(aiAnalysis.fetchedAt).toLocaleString()} · Confidence: {aiAnalysis.confidence_level?.toUpperCase()} · {aiTriggerCount} total analyses this session
+                  </div>
+                </div>
+
+                {/* Analyst summary */}
+                <div style={{ ...card, borderColor: "#0f03", background: "#050a05" }}>
+                  <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>ANALYST ASSESSMENT</div>
+                  <div style={{ color: "#bbb", lineHeight: 1.8, fontSize: 12 }}>{aiAnalysis.analyst_summary}</div>
+                  {aiAnalysis.key_risks?.length > 0 && (
+                    <div style={{ marginTop: 14, borderTop: "1px solid #111", paddingTop: 12 }}>
+                      <div style={{ color: "#e74c3c", fontSize: 10, letterSpacing: 1, marginBottom: 8 }}>KEY RISKS — NEXT 24 HOURS</div>
+                      {aiAnalysis.key_risks.map((r, i) => (
+                        <div key={i} style={{ display: "flex", gap: 10, marginBottom: 6 }}>
+                          <span style={{ color: "#e74c3c", flexShrink: 0 }}>▸</span>
+                          <span style={{ color: "#888", fontSize: 11 }}>{r}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Auto-detected indicators */}
+                {aiAnalysis.auto_indicators?.length > 0 && (
+                  <div style={{ ...card, borderColor: "#f5a62333" }}>
+                    <div style={{ color: "#f5a623", fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>◈ AI AUTO-DETECTED INDICATORS</div>
+                    <div style={{ color: "#666", fontSize: 11, marginBottom: 10 }}>These indicators were inferred from recent headlines and auto-ticked:</div>
+                    {aiAnalysis.auto_indicators.map(id => {
+                      const ind = ALL_INDICATORS.find(i => i.id === id);
+                      const sc  = SCENARIO_DEFS.find(s => s.id === ind?.scenario);
+                      if (!ind) return null;
+                      return (
+                        <div key={id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 0", borderBottom: "1px solid #111" }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: sc?.color, flexShrink: 0 }} />
+                          <span style={{ color: "#aaa", fontSize: 11 }}>{ind.label}</span>
+                          <span style={{ color: sc?.color, fontSize: 10, marginLeft: "auto" }}>{sc?.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!aiAnalysis && !aiLoading && !aiError && (
+              <div style={{ ...card, textAlign: "center", padding: 40, color: "#333" }}>
+                No analysis yet. Click "RUN FULL ANALYSIS NOW" above, or wait for new signals in the live feed to auto-trigger.
+              </div>
+            )}
           </div>
         )}
 
@@ -542,36 +759,32 @@ export default function App() {
         {activeTab === "markets" && (
           <div>
             <LivePriceTicker prices={livePrices} loading={priceLoading} lastFetched={priceFetched} onRefresh={fetchPrices} />
-
-            {/* Baseline table */}
             <div style={{ ...card, background: "#05080a", borderColor: "#0f03" }}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>BASELINE PRICES — FEB 28 2026 CLOSE</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                 {Object.entries(BASELINE).map(([asset, b]) => {
                   const live = livePrices[asset];
                   const chg  = live ? ((live - b.value) / b.value * 100) : null;
-                  const isUp = chg > 0;
                   return (
                     <div key={asset} style={{ background: "#080808", border: "1px solid #1a1a1a", borderRadius: 4, padding: "10px 12px" }}>
                       <div style={{ color: "#555", fontSize: 9, letterSpacing: 1, marginBottom: 4 }}>{b.label.toUpperCase()}</div>
-                      <div style={{ color: "#aaa", fontSize: 11, marginBottom: 2 }}>Baseline: <span style={{ color: "#fff", fontFamily: "monospace" }}>{b.fmt(b.value)}</span></div>
-                      {live && (
-                        <div style={{ color: isUp ? "#2ecc71" : "#e74c3c", fontSize: 11 }}>
+                      <div style={{ color: "#aaa", fontSize: 11 }}>Baseline: <span style={{ color: "#fff", fontFamily: "monospace" }}>{b.fmt(b.value)}</span></div>
+                      {live && chg !== null && (
+                        <div style={{ color: chg > 0 ? "#2ecc71" : "#e74c3c", fontSize: 11, marginTop: 2 }}>
                           Live: <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{b.fmt(live)}</span>
-                          <span style={{ fontSize: 9, marginLeft: 6 }}>({isUp ? "+" : ""}{chg.toFixed(2)}%)</span>
+                          <span style={{ fontSize: 9, marginLeft: 6 }}>({chg > 0 ? "+" : ""}{chg.toFixed(2)}%)</span>
                         </div>
                       )}
-                      {!live && <div style={{ color: "#333", fontSize: 10 }}>Live price loading...</div>}
+                      {!live && <div style={{ color: "#333", fontSize: 10 }}>Market closed / unavailable</div>}
                     </div>
                   );
                 })}
               </div>
               <div style={{ color: "#333", fontSize: 10, marginTop: 10 }}>
-                All impact estimates calculated from Feb 28 close. Live prices update when markets are open. Click UPDATE PRICES to refresh manually.
+                {aiMarkets ? "Market impact estimates are AI-updated based on current signals and headlines." : "Market impact estimates are baseline defaults — run AI Analysis for live-reasoned updates."}
               </div>
             </div>
 
-            {/* Per-scenario impact cards */}
             {SCENARIOS.map(s => (
               <div key={s.id} style={{ ...card, borderLeft: `3px solid ${s.color}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
@@ -581,13 +794,13 @@ export default function App() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ color: s.color, fontSize: 24, fontWeight: 700, fontFamily: "monospace" }}>{probabilities[s.id]}%</div>
-                      <div style={{ color: "#444", fontSize: 10 }}>probability</div>
+                      <div style={{ color: s.color, fontSize: 24, fontWeight: 700, fontFamily: "monospace" }}>{s.probability}%</div>
+                      <div style={{ color: "#444", fontSize: 10 }}>{aiProbs ? "AI probability" : "static probability"}</div>
                     </div>
                     <svg viewBox="0 0 50 50" width={44} height={44}>
                       <circle cx={25} cy={25} r={20} fill="none" stroke="#222" strokeWidth={5} />
                       <circle cx={25} cy={25} r={20} fill="none" stroke={s.color} strokeWidth={5}
-                        strokeDasharray={`${(probabilities[s.id]/100)*(2*Math.PI*20)} ${2*Math.PI*20}`}
+                        strokeDasharray={`${(s.probability/100)*(2*Math.PI*20)} ${2*Math.PI*20}`}
                         strokeLinecap="round" transform="rotate(-90 25 25)"
                         style={{ filter: `drop-shadow(0 0 3px ${s.color})` }} />
                     </svg>
@@ -595,51 +808,40 @@ export default function App() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
                   {Object.entries(s.markets).map(([asset, mdata]) => (
-                    <MarketImpactCard key={asset} asset={asset} mdata={mdata} scenarioColor={s.color} livePrice={livePrices[asset]} scenarioProb={probabilities[s.id]} />
+                    <MarketImpactCard key={asset} asset={asset} mdata={mdata} livePrice={livePrices[asset]} />
                   ))}
                 </div>
               </div>
             ))}
 
-            {/* Prob-weighted summary */}
+            {/* Probability-weighted summary */}
             <div style={card}>
-              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>PROBABILITY-WEIGHTED EXPECTED MOVE (7-DAY OUTLOOK)</div>
-              <div style={{ color: "#555", fontSize: 11, marginBottom: 12 }}>
-                Weighted average of central estimates across all scenarios, adjusted for current probability scores.
-              </div>
+              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>PROBABILITY-WEIGHTED EXPECTED MOVE (7-DAY)</div>
               {Object.keys(BASELINE).map(asset => {
-                const isBps = SCENARIOS[0].markets[asset].isBps;
-                const weightedMid = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_mid * probabilities[s.id] / 100), 0);
-                const weightedLow = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_low  * probabilities[s.id] / 100), 0);
-                const weightedHigh= SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_high * probabilities[s.id] / 100), 0);
-                const base = livePrices[asset] || BASELINE[asset].value;
-                const midLevel  = isBps ? base + weightedMid / 100  : base * (1 + weightedMid  / 100);
-                const dc = weightedMid > 1 ? "#2ecc71" : weightedMid < -1 ? "#e74c3c" : "#f5a623";
-                const midStr = isBps
-                  ? `${weightedMid > 0 ? "+" : ""}${weightedMid.toFixed(1)}bps`
-                  : `${weightedMid > 0 ? "+" : ""}${weightedMid.toFixed(1)}%`;
-                const ciStr = isBps
-                  ? `${weightedLow.toFixed(0)} to ${weightedHigh.toFixed(0)}bps`
-                  : `${weightedLow.toFixed(1)}% to ${weightedHigh.toFixed(1)}%`;
+                const isBps = DEFAULT_MARKETS.status_quo[asset].isBps;
+                const wMid  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_mid  * s.probability / 100), 0);
+                const wLow  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_low  * s.probability / 100), 0);
+                const wHigh = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_high * s.probability / 100), 0);
+                const base  = livePrices[asset] || BASELINE[asset].value;
+                const midLvl= isBps ? base + wMid / 100 : base * (1 + wMid / 100);
+                const dc    = wMid > 1 ? "#2ecc71" : wMid < -1 ? "#e74c3c" : "#f5a623";
+                const midStr= isBps ? `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}bps` : `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}%`;
+                const ciStr = isBps ? `${wLow.toFixed(0)} to ${wHigh.toFixed(0)}bps` : `${wLow.toFixed(1)}% to ${wHigh.toFixed(1)}%`;
                 return (
                   <div key={asset} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #111", flexWrap: "wrap" }}>
                     <div style={{ width: 150 }}>
                       <div style={{ color: "#aaa", fontSize: 12 }}>{BASELINE[asset].label}</div>
-                      <div style={{ color: "#555", fontSize: 10 }}>{BASELINE[asset].fmt(base)} baseline</div>
+                      <div style={{ color: "#555", fontSize: 10 }}>{BASELINE[asset].fmt(base)}</div>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ color: dc, fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{midStr}</span>
-                        <span style={{ color: dc, fontSize: 11 }}>→ {BASELINE[asset].fmt(midLevel)}</span>
-                        <span style={{ color: "#444", fontSize: 10, background: "#1a1a1a", padding: "2px 6px", borderRadius: 3 }}>90% CI: {ciStr}</span>
-                      </div>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ color: dc, fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{midStr}</span>
+                      <span style={{ color: dc, fontSize: 11 }}>→ {BASELINE[asset].fmt(midLvl)}</span>
+                      <span style={{ color: "#444", fontSize: 10, background: "#1a1a1a", padding: "2px 6px", borderRadius: 3 }}>90% CI: {ciStr}</span>
                     </div>
                   </div>
                 );
               })}
-              <div style={{ color: "#2a2a2a", fontSize: 10, marginTop: 10 }}>
-                For analytical purposes only. Not financial advice. Confidence intervals based on historical geopolitical shock analogues.
-              </div>
+              <div style={{ color: "#2a2a2a", fontSize: 10, marginTop: 10 }}>For analytical purposes only. Not financial advice.</div>
             </div>
           </div>
         )}
@@ -663,52 +865,45 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · auto-refreshes every 5 min</div>}
+            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · auto-refreshes every 5 min · new signals auto-trigger AI analysis</div>}
             <div style={card}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>LIVE MAP & OSINT SOURCES</div>
-              <div style={{ color: "#555", fontSize: 11, marginBottom: 14 }}>These sources block embedding — open alongside this dashboard in a separate tab.</div>
               {[
                 { name: "Iran LiveUAMap",         url: "https://iran.liveuamap.com",                    color: "#2ecc71", desc: "Geolocated real-time conflict events across Iran" },
                 { name: "NetBlocks",              url: "https://netblocks.org",                         color: "#3498db", desc: "Internet shutdown & connectivity monitoring" },
                 { name: "Kpler Tanker Tracking",  url: "https://www.kpler.com",                         color: "#f5a623", desc: "Real-time tanker movements — confirm Kharg Island halt" },
                 { name: "Bonbast (Rial rate)",    url: "https://www.bonbast.com",                       color: "#e74c3c", desc: "Iranian Rial black market exchange rate" },
                 { name: "ISW Iran Updates",       url: "https://www.understandingwar.org/regions/iran", color: "#9b59b6", desc: "Daily control-of-terrain & regime stability analysis" },
-                { name: "Critical Threats / CTP", url: "https://www.criticalthreats.org/topics/iran",  color: "#e67e22", desc: "CTP-ISW Iran regime instability indicators" },
-                { name: "ACLED Conflict Data",    url: "https://acleddata.com/dashboard",              color: "#3498db", desc: "Armed conflict location & event data" },
-                { name: "Iran International",     url: "https://www.iranintl.com/en",                  color: "#7b5ea7", desc: "Farsi & English breaking news from inside Iran" },
+                { name: "Iran International",     url: "https://www.iranintl.com/en",                  color: "#7b5ea7", desc: "Breaking news from inside Iran" },
               ].map(src => (
                 <a key={src.name} href={src.url} target="_blank" rel="noopener noreferrer"
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #111", textDecoration: "none" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #111", textDecoration: "none" }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: src.color, boxShadow: `0 0 6px ${src.color}`, flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ color: src.color, fontWeight: 700, fontSize: 12 }}>{src.name}</div>
-                    <div style={{ color: "#555", fontSize: 11, marginTop: 2 }}>{src.desc}</div>
+                    <div style={{ color: "#555", fontSize: 11 }}>{src.desc}</div>
                   </div>
-                  <div style={{ color: "#333", fontSize: 11 }}>-&gt;</div>
+                  <span style={{ color: "#333" }}>-&gt;</span>
                 </a>
               ))}
             </div>
-            {feedLoading && <div style={{ color: "#0f0", textAlign: "center", padding: 40, letterSpacing: 2, animation: "pulse 1s infinite" }}>FETCHING INTELLIGENCE FEEDS...</div>}
+            {feedLoading && <div style={{ color: "#0f0", textAlign: "center", padding: 40, animation: "pulse 1s infinite" }}>FETCHING FEEDS...</div>}
             {feedError && !feedLoading && <div style={{ ...card, borderColor: "#e74c3c44", color: "#e74c3c" }}>⚠ {feedError}</div>}
-            {!feedLoading && feedItems.length === 0 && !feedError && <div style={{ color: "#555", textAlign: "center", padding: 40 }}>No items yet — click REFRESH above.</div>}
-            {!feedLoading && feedItems
-              .filter(item => feedFilter === "flagged" ? item.classification : true)
-              .map(item => {
-                const sc = item.classification ? SCENARIOS.find(s => s.id === item.classification.scenario) : null;
-                return (
-                  <div key={item.id} style={{ ...card, borderLeft: `3px solid ${sc ? sc.color : "#1a1a1a"}`, background: sc ? `${sc.color}08` : "#0a0a0a", marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-                      <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ color: sc ? "#fff" : "#aaa", textDecoration: "none", flex: 1, lineHeight: 1.5, fontSize: 13 }}>{item.title}</a>
-                      <span style={{ color: item.source.color, fontSize: 10, background: `${item.source.color}18`, border: `1px solid ${item.source.color}33`, padding: "2px 6px", borderRadius: 2, flexShrink: 0 }}>{item.source.name}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 12, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <span style={{ color: "#444", fontSize: 10 }}>{item.date.toLocaleString()}</span>
-                      {sc && <span style={{ color: sc.color, fontSize: 10, background: `${sc.color}18`, border: `1px solid ${sc.color}44`, padding: "2px 8px", borderRadius: 3 }}>⚡ {item.classification.label} → {sc.label}</span>}
-                    </div>
+            {!feedLoading && feedItems.filter(item => feedFilter === "flagged" ? item.classification : true).map(item => {
+              const sc = item.classification ? SCENARIO_DEFS.find(s => s.id === item.classification.scenario) : null;
+              return (
+                <div key={item.id} style={{ ...card, borderLeft: `3px solid ${sc ? sc.color : "#1a1a1a"}`, background: sc ? `${sc.color}08` : "#0a0a0a", marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ color: sc ? "#fff" : "#aaa", textDecoration: "none", flex: 1, lineHeight: 1.5 }}>{item.title}</a>
+                    <span style={{ color: item.source.color, fontSize: 10, background: `${item.source.color}18`, border: `1px solid ${item.source.color}33`, padding: "2px 6px", borderRadius: 2, flexShrink: 0 }}>{item.source.name}</span>
                   </div>
-                );
-              })
-            }
+                  <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+                    <span style={{ color: "#444", fontSize: 10 }}>{item.date.toLocaleString()}</span>
+                    {sc && <span style={{ color: sc.color, fontSize: 10, background: `${sc.color}18`, border: `1px solid ${sc.color}44`, padding: "2px 8px", borderRadius: 3 }}>⚡ {item.classification.label} → {sc.label}</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -719,12 +914,16 @@ export default function App() {
               <div key={bucket} style={card}>
                 <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>{bucket} indicators</div>
                 {inds.map(ind => {
-                  const sc = SCENARIOS.find(s => s.id === ind.scenario);
+                  const sc  = SCENARIO_DEFS.find(s => s.id === ind.scenario);
+                  const isAi = aiAnalysis?.auto_indicators?.includes(ind.id);
                   return (
                     <div key={ind.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 0", borderBottom: "1px solid #111", cursor: "pointer", opacity: checked[ind.id] ? 1 : 0.5 }} onClick={() => toggleIndicator(ind.id)}>
                       <div style={{ width: 16, height: 16, borderRadius: 3, border: `1px solid ${sc?.color}`, background: checked[ind.id] ? sc?.color : "transparent", flexShrink: 0, marginTop: 1, boxShadow: checked[ind.id] ? `0 0 6px ${sc?.color}` : "none", transition: "all 0.2s" }} />
                       <div style={{ flex: 1 }}>
-                        <div style={{ color: checked[ind.id] ? "#fff" : "#888" }}>{ind.label}</div>
+                        <div style={{ color: checked[ind.id] ? "#fff" : "#888" }}>
+                          {ind.label}
+                          {isAi && <span style={{ color: "#0f0", fontSize: 9, marginLeft: 8, background: "#0f022", border: "1px solid #0f04", padding: "1px 5px", borderRadius: 2 }}>AI DETECTED</span>}
+                        </div>
                         <div style={{ display: "flex", gap: 12, marginTop: 3 }}>
                           <span style={{ color: sc?.color, fontSize: 10 }}>{sc?.label}</span>
                           <span style={{ color: "#444", fontSize: 10 }}>weight: +{ind.weight}</span>
@@ -743,7 +942,7 @@ export default function App() {
           <div>
             {LEADERS.map(l => (
               <div key={l.id} style={{ ...card, borderLeft: `3px solid ${l.color}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                   <div>
                     <div style={{ color: l.color, fontSize: 16, fontWeight: 700 }}>{l.name}</div>
                     <div style={{ color: "#666", fontSize: 11 }}>{l.role}</div>
@@ -754,7 +953,7 @@ export default function App() {
                   {[["POWER BASE", l.powerBase], ["STRATEGY", l.strategy], ["RISK", l.risk]].map(([k, v]) => (
                     <div key={k}><div style={{ color: "#555", fontSize: 10, letterSpacing: 1 }}>{k}</div><div style={{ color: "#bbb", marginTop: 2 }}>{v}</div></div>
                   ))}
-                  <div style={{ background: "#0a200a", border: "1px solid #0f04", borderRadius: 4, padding: "8px 12px", marginTop: 4 }}>
+                  <div style={{ background: "#0a200a", border: "1px solid #0f04", borderRadius: 4, padding: "8px 12px" }}>
                     <span style={{ color: "#0f0", fontSize: 10 }}>SIGNAL: </span>
                     <span style={{ color: "#8f8" }}>{l.signal}</span>
                   </div>
@@ -768,12 +967,9 @@ export default function App() {
         {/* ══ MILITARY ══ */}
         {activeTab === "military" && (
           <div>
-            <div style={{ ...card, background: "#0a0500", borderColor: "#333" }}>
+            <div style={{ ...card, background: "#0a0500" }}>
               <div style={{ color: "#f5a623", fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>DEFECTION THRESHOLD GUIDE</div>
-              <div style={{ color: "#888", fontSize: 12 }}>
-                Artesh defections → <span style={{ color: "#2ecc71" }}>Regime Collapse +3</span> · IRGC fractures → <span style={{ color: "#e74c3c" }}>Military Junta +2</span><br />
-                Click a unit to cycle: NOMINAL → CONCERNING → DEFECTED
-              </div>
+              <div style={{ color: "#888", fontSize: 12 }}>Artesh defections → <span style={{ color: "#2ecc71" }}>Regime Collapse +3</span> · IRGC fractures → <span style={{ color: "#e74c3c" }}>Military Junta +2</span><br />Click a unit to cycle: NOMINAL → CONCERNING → DEFECTED</div>
             </div>
             {MILITARY_UNITS.map(u => {
               const state = militaryRisk[u.unit] || "nominal";
@@ -781,7 +977,7 @@ export default function App() {
               const bc = { Artesh: "#3498db", IRGC: "#e74c3c" };
               return (
                 <div key={u.unit} style={{ ...card, cursor: "pointer", borderLeft: `3px solid ${sc[state]}`, opacity: state === "nominal" ? 0.6 : 1, transition: "all 0.2s" }} onClick={() => toggleMilitary(u.unit)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <div><div style={{ color: "#ccc" }}>{u.unit}</div><div style={{ color: "#666", fontSize: 11 }}>{u.region}</div></div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <span style={{ background: `${bc[u.branch]}22`, border: `1px solid ${bc[u.branch]}44`, color: bc[u.branch], padding: "2px 8px", borderRadius: 3, fontSize: 10 }}>{u.branch}</span>
@@ -801,7 +997,7 @@ export default function App() {
             <div style={card}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>ECONOMIC KILL-SWITCH TRIGGERS</div>
               {ECON_TRIGGERS.map(trigger => (
-                <div key={trigger.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 0", borderBottom: "1px solid #111", cursor: "pointer" }} onClick={() => toggleEcon(trigger.id)}>
+                <div key={trigger.id} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #111", cursor: "pointer" }} onClick={() => toggleEcon(trigger.id)}>
                   <div style={{ width: 18, height: 18, borderRadius: 3, border: `1px solid ${trigger.color}`, background: econTriggers[trigger.id] ? trigger.color : "transparent", boxShadow: econTriggers[trigger.id] ? `0 0 8px ${trigger.color}` : "none", flexShrink: 0, marginTop: 2, transition: "all 0.2s" }} />
                   <div>
                     <div style={{ color: econTriggers[trigger.id] ? "#fff" : "#888" }}>{trigger.label}</div>
@@ -816,8 +1012,7 @@ export default function App() {
               {ECON_THRESHOLDS.map(t => (
                 <div key={t.label} style={{ marginBottom: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ color: t.color }}>{t.label}</span>
-                    <span style={{ color: t.color, fontWeight: 700 }}>{t.probability}%</span>
+                    <span style={{ color: t.color }}>{t.label}</span><span style={{ color: t.color, fontWeight: 700 }}>{t.probability}%</span>
                   </div>
                   <GlowBar value={t.probability} max={100} color={t.color} />
                   <div style={{ color: "#444", fontSize: 11, marginTop: 3 }}>{t.desc}</div>
@@ -833,7 +1028,7 @@ export default function App() {
             <div style={card}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>ANALYST NOTES</div>
               <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Record observations, source citations, time-stamped intelligence updates..."
+                placeholder="Record observations, source citations, time-stamped updates..."
                 style={{ width: "100%", minHeight: 300, background: "#050505", color: "#0f0", border: "1px solid #0f04", borderRadius: 4, fontFamily: "monospace", fontSize: 12, padding: 12, resize: "vertical", outline: "none", boxSizing: "border-box" }} />
             </div>
             <div style={card}>
@@ -841,11 +1036,11 @@ export default function App() {
               {SCENARIOS.map(s => (
                 <div key={s.id} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #111", padding: "6px 0" }}>
                   <span style={{ color: s.color }}>{s.label}</span>
-                  <span style={{ color: s.color, fontWeight: 700 }}>{probabilities[s.id]}%</span>
+                  <span style={{ color: s.color, fontWeight: 700 }}>{s.probability}% {aiProbs ? "(AI)" : "(static)"}</span>
                 </div>
               ))}
               <div style={{ marginTop: 12, color: "#555", fontSize: 11 }}>
-                Active indicators: {checkedCount}/{ALL_INDICATORS.length} · Economic triggers: {Object.values(econTriggers).filter(Boolean).length} · Military alerts: {Object.values(militaryRisk).filter(v => v !== "nominal").length}
+                Active indicators: {checkedCount}/{ALL_INDICATORS.length} · Econ triggers: {Object.values(econTriggers).filter(Boolean).length} · Military alerts: {Object.values(militaryRisk).filter(v => v !== "nominal").length} · AI analyses: {aiTriggerCount}
               </div>
             </div>
           </div>

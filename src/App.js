@@ -10,8 +10,7 @@ const BASELINE = {
   dxy:   { value: 97.65,   label: "DXY (USD Index)",   unit: "",     fmt: v => v.toFixed(2) },
 };
 
-// Yahoo Finance proxy symbols
-const YF_SYMBOLS = { spx: "%5EGSPC", brent: "BZ%3DF", ust5y: "%5EFVX", dxy: "DX-Y.NYB" };
+
 
 // ─── SCENARIOS ────────────────────────────────────────────────────────────────
 // Each market entry:
@@ -228,19 +227,6 @@ function dirColor(d) {
   if (d === "down")    return "#e74c3c";
   if (d === "neutral") return "#f5a623";
   return "#3498db";
-}
-
-// Compute impact levels from baseline + pct_mid
-function computeLevel(asset, pct, livePrice) {
-  const base = livePrice || BASELINE[asset].value;
-  const isBps = SCENARIOS[0].markets[asset].isBps;
-  if (isBps) return base + pct / 100;   // pct here is actually bps
-  return base * (1 + pct / 100);
-}
-
-// Format a projected level
-function fmtLevel(asset, level) {
-  return BASELINE[asset].fmt(level);
 }
 
 // ─── MARKET PRICE CARD ────────────────────────────────────────────────────────

@@ -466,12 +466,12 @@ export default function App() {
           messages: [{ role: "user", content: prompt }],
         }),
       });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Server returned ${response.status}`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data) {
+        const msg = data?.error?.message || data?.error || `Server returned ${response.status}`;
+        throw new Error(typeof msg === "object" ? JSON.stringify(msg) : msg);
       }
-      const data  = await response.json();
-      if (data?.error) throw new Error(data.error.message || "API error");
+      if (data?.error) throw new Error(typeof data.error === "object" ? JSON.stringify(data.error) : data.error);
       const text  = data.content?.map(b => b.text || "").join("") || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
@@ -489,7 +489,7 @@ export default function App() {
       setAiAnalysis({ ...parsed, fetchedAt: new Date().toISOString() });
       setAiTriggerCount(c => c + 1);
     } catch (err) {
-      setAiError(`Analysis failed: ${err.message}`);
+      setAiError(`Analysis failed: ${typeof err.message === 'string' ? err.message : JSON.stringify(err)}`);
     }
     setAiLoading(false);
   }, [setChecked, setLastUpdate, setAiAnalysis]);

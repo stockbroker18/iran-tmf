@@ -367,7 +367,6 @@ export default function App() {
   const [livePrices,     setLivePrices]     = useState({});
   const [priceLoading,   setPriceLoading]   = useState(false);
   const [priceFetched,   setPriceFetched]   = useState(null);
-  const [priceSource,    setPriceSource]    = useState("TraderMade CFD / US Treasury");
 
   // AI analysis state
   const [aiAnalysis,     setAiAnalysis]     = useLocalStorage("iran_tmd_v15_ai",          null);
@@ -392,7 +391,6 @@ export default function App() {
       if (Object.keys(results).length > 0) {
         setLivePrices(results);
         setPriceFetched(new Date());
-        setPriceSource(data.source || "TraderMade CFD");
       }
     } catch (err) {
       console.warn("Price fetch failed:", err.message);

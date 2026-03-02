@@ -134,7 +134,7 @@ const CORS_PROXY = "https://api.allorigins.win/get?url=";
 // RSSHub: replace with your self-hosted instance URL once deployed on Railway
 // e.g. "https://your-app-name.up.railway.app"
 // Until then, falls back to public instance (rate-limited)
-const RSSHUB = https://rsshub-production-0380.up.railway.app/telegram/channel/VahidOnline;
+const RSSHUB = https://rsshub-production-0380.up.railway.app;
 
 // ─── LEADERS ──────────────────────────────────────────────────────────────────
 const LEADERS = [

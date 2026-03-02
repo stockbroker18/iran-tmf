@@ -115,12 +115,26 @@ function classifyHeadline(text) {
 
 // ─── RSS SOURCES ──────────────────────────────────────────────────────────────
 const RSS_SOURCES = [
-  { id: "aljazeera", name: "Al Jazeera",         color: "#c8a84b", url: "https://www.aljazeera.com/xml/rss/all.xml" },
-  { id: "bbc",       name: "BBC Middle East",    color: "#bb1919", url: "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml" },
-  { id: "reuters",   name: "Reuters World",      color: "#ff6600", url: "https://feeds.reuters.com/reuters/worldNews" },
-  { id: "iranintl",  name: "Iran International", color: "#7b5ea7", url: "https://www.iranintl.com/en/rss" },
+  // ── Established wire / broadcast ──────────────────────────────────────────
+  { id: "aljazeera",  name: "Al Jazeera",            color: "#c8a84b", url: "https://www.aljazeera.com/xml/rss/all.xml",                              type: "rss" },
+  { id: "bbc_me",     name: "BBC Middle East",        color: "#bb1919", url: "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml",                type: "rss" },
+  { id: "bbc_persian",name: "BBC Persian",            color: "#cc2200", url: "https://feeds.bbci.co.uk/persian/rss.xml",                               type: "rss" },
+  { id: "reuters",    name: "Reuters World",          color: "#ff6600", url: "https://feeds.reuters.com/reuters/worldNews",                            type: "rss" },
+  { id: "ap",         name: "AP Middle East",         color: "#ff4400", url: `${RSSHUB}/apnews/topics/middle-east`,                           type: "rss" },
+  { id: "guardian",   name: "Guardian Middle East",   color: "#005689", url: "https://www.theguardian.com/world/middleeast/rss",                       type: "rss" },
+  { id: "rferl",      name: "RFE/RL Iran",            color: "#1a6496", url: "https://www.rferl.org/api/epiqq",                                        type: "rss" },
+  { id: "almonitor",  name: "Al-Monitor",             color: "#2e86ab", url: "https://www.al-monitor.com/rss",                                         type: "rss" },
+  // ── Iran-specialist outlets ───────────────────────────────────────────────
+  { id: "iranintl",   name: "Iran International",     color: "#7b5ea7", url: "https://www.iranintl.com/en/rss",                                        type: "rss" },
+  // ── Telegram via RSSHub bridge (may require self-hosted RSSHub for reliability)
+  { id: "vahidonline", name: "Vahid Online (TG)",     color: "#2ca5e0", url: `${RSSHUB}/telegram/channel/VahidOnline`,                        type: "telegram" },
+  { id: "iranintl_tg", name: "Iran Intl (TG)",        color: "#9b59b6", url: `${RSSHUB}/telegram/channel/iranintl`,                           type: "telegram" },
 ];
 const CORS_PROXY = "https://api.allorigins.win/get?url=";
+// RSSHub: replace with your self-hosted instance URL once deployed on Railway
+// e.g. "https://your-app-name.up.railway.app"
+// Until then, falls back to public instance (rate-limited)
+const RSSHUB = https://rsshub-production-0380.up.railway.app/telegram/channel/VahidOnline;
 
 // ─── LEADERS ──────────────────────────────────────────────────────────────────
 const LEADERS = [
@@ -527,7 +541,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + AI · <span style={{ color: "#0f06" }}>v1.6</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + AI · <span style={{ color: "#0f06" }}>v1.7</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· AI ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -828,9 +842,18 @@ export default function App() {
           <div>
             <div style={{ ...card, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
               <span style={{ color: "#0f0", fontSize: 11, letterSpacing: 2 }}>SOURCES</span>
-              {RSS_SOURCES.map(s => (
-                <span key={s.id} style={{ background: `${s.color}22`, border: `1px solid ${s.color}44`, color: s.color, padding: "3px 10px", borderRadius: 3, fontSize: 10 }}>{s.name}</span>
-              ))}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <span style={{ color: "#444", fontSize: 9, alignSelf: "center", letterSpacing: 1 }}>RSS:</span>
+                {RSS_SOURCES.filter(s => s.type !== "telegram").map(s => (
+                  <span key={s.id} style={{ background: `${s.color}22`, border: `1px solid ${s.color}44`, color: s.color, padding: "2px 8px", borderRadius: 3, fontSize: 10 }}>{s.name}</span>
+                ))}
+                <span style={{ color: "#444", fontSize: 9, alignSelf: "center", letterSpacing: 1, marginLeft: 4 }}>TELEGRAM:</span>
+                {RSS_SOURCES.filter(s => s.type === "telegram").map(s => (
+                  <span key={s.id} style={{ background: `${s.color}22`, border: `1px solid ${s.color}44`, color: s.color, padding: "2px 8px", borderRadius: 3, fontSize: 10 }}>
+                    <span style={{ marginRight: 4 }}>✈</span>{s.name}
+                  </span>
+                ))}
+              </div>
               <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 <button onClick={() => setFeedFilter(f => f === "all" ? "flagged" : "all")}
                   style={{ background: feedFilter === "flagged" ? "#e74c3c22" : "transparent", border: `1px solid ${feedFilter === "flagged" ? "#e74c3c" : "#333"}`, color: feedFilter === "flagged" ? "#e74c3c" : "#666", padding: "4px 10px", borderRadius: 3, fontSize: 10, cursor: "pointer", fontFamily: "monospace" }}>
@@ -843,6 +866,9 @@ export default function App() {
               </div>
             </div>
             {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · auto-refreshes every 5 min · new signals auto-trigger AI analysis</div>}
+            <div style={{ color: "#2ca5e066", fontSize: 10, marginBottom: 8, background: "#0d1a2011", border: "1px solid #2ca5e022", borderRadius: 3, padding: "5px 10px" }}>
+              ✈ Telegram feeds (Vahid Online, Iran Intl) use the public RSSHub bridge. If they show no items, the public bridge may be rate-limited — feeds will retry on next refresh.
+            </div>
             <div style={card}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>LIVE MAP & OSINT SOURCES</div>
               {[
@@ -852,6 +878,10 @@ export default function App() {
                 { name: "Bonbast (Rial rate)",    url: "https://www.bonbast.com",                       color: "#e74c3c", desc: "Iranian Rial black market exchange rate" },
                 { name: "ISW Iran Updates",       url: "https://www.understandingwar.org/regions/iran", color: "#9b59b6", desc: "Daily control-of-terrain & regime stability analysis" },
                 { name: "Iran International",     url: "https://www.iranintl.com/en",                  color: "#7b5ea7", desc: "Breaking news from inside Iran" },
+                { name: "Vahid Online (Telegram)", url: "https://t.me/s/VahidOnline",                  color: "#2ca5e0", desc: "Most followed Iranian OSINT aggregator — verifies street-level footage" },
+                { name: "Al-Monitor Iran",         url: "https://www.al-monitor.com/iran",              color: "#2e86ab", desc: "In-depth Iran analysis and diplomatic reporting" },
+                { name: "RFE/RL Iran (Radio Farda)", url: "https://www.rferl.org/iran",                color: "#1a6496", desc: "US-funded Persian-language service — strong on protest coverage" },
+                { name: "The Guardian Middle East", url: "https://www.theguardian.com/world/middleeast",color: "#005689", desc: "Independent Western reporting on regional escalation" },
               ].map(src => (
                 <a key={src.name} href={src.url} target="_blank" rel="noopener noreferrer"
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #111", textDecoration: "none" }}>

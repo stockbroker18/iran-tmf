@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   };
 
   try {
-    const model = "gemini-2.5-flash";
+    const model = "gemini-1.5-flash-latest"; // 1,500 req/day free
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const upstream = await fetch(url, {

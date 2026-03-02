@@ -444,7 +444,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "llama-3.3-70b-versatile", // Groq free tier
           max_tokens: 4000,
           messages: [{ role: "user", content: prompt }],
         }),
@@ -540,8 +540,8 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + AI · <span style={{ color: "#0f06" }}>v1.7</span>
-            {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· AI ACTIVE ({aiTriggerCount} analyses)</span>}
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.8</span>
+            {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -556,7 +556,7 @@ export default function App() {
       <div style={{ background: `${leading.color}18`, borderBottom: `1px solid ${leading.color}44`, padding: "8px 20px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: leading.color, boxShadow: `0 0 10px ${leading.color}`, animation: "pulse 1.5s infinite", flexShrink: 0 }} />
         <span style={{ color: leading.color, fontWeight: 700, letterSpacing: 1 }}>LEADING: {leading.label.toUpperCase()}</span>
-        <span style={{ color: "#555", fontSize: 10, marginLeft: 4 }}>{aiProbs ? "· AI-REASONED" : "· STATIC WEIGHTS"}</span>
+        <span style={{ color: "#555", fontSize: 10, marginLeft: 4 }}>{aiProbs ? "· GROQ-REASONED" : "· STATIC WEIGHTS"}</span>
         <span style={{ color: "#666", marginLeft: "auto" }}>{leading.probability}% probability</span>
         {flaggedCount > 0 && <span style={{ color: "#e74c3c", fontSize: 10, border: "1px solid #e74c3c44", padding: "2px 8px", borderRadius: 3 }}>⚡ {flaggedCount} signals</span>}
         {aiLoading && <span style={{ color: "#0f0", fontSize: 10, animation: "pulse 1s infinite" }}>◈ AI ANALYSING...</span>}
@@ -584,7 +584,7 @@ export default function App() {
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: aiAnalysis ? "#0f0" : "#333", boxShadow: aiAnalysis ? "0 0 8px #0f0" : "none", flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <span style={{ color: aiAnalysis ? "#0f0" : "#555", fontSize: 11 }}>
-                  {aiAnalysis ? `AI analysis active — last run ${new Date(aiAnalysis.fetchedAt).toLocaleTimeString()} · ${aiTriggerCount} total runs` : "AI analysis not yet run — go to AI Analysis tab or wait for new signals"}
+                  {aiAnalysis ? `Groq AI active — last run ${new Date(aiAnalysis.fetchedAt).toLocaleTimeString()} · ${aiTriggerCount} total runs` : "Groq AI not yet run — go to AI Analysis tab or wait for new signals"}
                 </span>
                 {aiAnalysis && <span style={{ color: "#555", fontSize: 10, marginLeft: 8 }}>confidence: {aiAnalysis.confidence_level?.toUpperCase()}</span>}
               </div>
@@ -592,14 +592,14 @@ export default function App() {
                 onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
                 disabled={aiLoading}
                 style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "5px 14px", borderRadius: 3, fontSize: 10, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 1 }}>
-                {aiLoading ? "◈ ANALYSING..." : "◈ RUN AI ANALYSIS"}
+                {aiLoading ? "◈ ANALYSING..." : "◈ RUN GROQ ANALYSIS"}
               </button>
             </div>
 
             <div style={card}>
               <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 16 }}>
                 SCENARIO PROBABILITY MATRIX
-                <span style={{ color: "#333", fontWeight: 400, marginLeft: 8 }}>{aiProbs ? "· AI-REASONED PROBABILITIES" : "· STATIC INDICATOR WEIGHTS"}</span>
+                <span style={{ color: "#333", fontWeight: 400, marginLeft: 8 }}>{aiProbs ? "· GROQ-REASONED PROBABILITIES" : "· STATIC INDICATOR WEIGHTS"}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 16, justifyItems: "center" }}>
                 {SCENARIOS.map(s => <ProbabilityRing key={s.id} value={s.probability} color={s.color} label={s.label} aiOverride={!!aiProbs} />)}
@@ -646,9 +646,9 @@ export default function App() {
             <div style={{ ...card, background: "#050a05", borderColor: "#0f03" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                 <div>
-                  <div style={{ color: "#0f0", fontSize: 12, letterSpacing: 2, marginBottom: 4 }}>◈ REAL-TIME AI ANALYSIS ENGINE</div>
+                  <div style={{ color: "#0f0", fontSize: 12, letterSpacing: 2, marginBottom: 4 }}>◈ GROQ AI ANALYSIS ENGINE · Llama 3.3 70B</div>
                   <div style={{ color: "#555", fontSize: 11 }}>
-                    Sends all active indicators, military/economic signals, and last 60 minutes of headlines to Claude for live reasoning.
+                    Sends all active indicators, military/economic signals, and last 60 minutes of headlines to Groq (Llama 3.3 70B) for live reasoning. Free tier: 14,400 requests/day.
                     Auto-triggers when new signals are detected in the feed.
                   </div>
                 </div>
@@ -656,7 +656,7 @@ export default function App() {
                   onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
                   disabled={aiLoading}
                   style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "8px 20px", borderRadius: 3, fontSize: 11, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 2, boxShadow: aiLoading ? "none" : "0 0 12px #0f04" }}>
-                  {aiLoading ? "◈ ANALYSING IN PROGRESS..." : "◈ RUN FULL ANALYSIS NOW"}
+                  {aiLoading ? "◈ ANALYSING IN PROGRESS..." : "◈ RUN FULL GROQ ANALYSIS NOW"}
                 </button>
               </div>
 
@@ -680,8 +680,8 @@ export default function App() {
 
             {aiLoading && (
               <div style={{ ...card, borderColor: "#0f03", textAlign: "center", padding: 40 }}>
-                <div style={{ color: "#0f0", fontSize: 14, letterSpacing: 3, animation: "pulse 1s infinite", marginBottom: 8 }}>◈ CLAUDE IS ANALYSING</div>
-                <div style={{ color: "#555", fontSize: 11 }}>Processing indicators, military signals, economic triggers and recent headlines...</div>
+                <div style={{ color: "#0f0", fontSize: 14, letterSpacing: 3, animation: "pulse 1s infinite", marginBottom: 8 }}>◈ GROQ IS ANALYSING</div>
+                <div style={{ color: "#555", fontSize: 11 }}>Groq / Llama 3.3 70B is processing indicators, military signals, economic triggers and recent headlines...</div>
               </div>
             )}
 
@@ -689,12 +689,12 @@ export default function App() {
               <div>
                 {/* Probabilities */}
                 <div style={{ ...card, borderColor: "#0f03" }}>
-                  <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>AI-REASONED SCENARIO PROBABILITIES</div>
+                  <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 12 }}>GROQ-REASONED SCENARIO PROBABILITIES · Llama 3.3 70B</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 16, justifyItems: "center", marginBottom: 16 }}>
                     {SCENARIOS.map(s => <ProbabilityRing key={s.id} value={s.probability} color={s.color} label={s.label} aiOverride={true} />)}
                   </div>
                   <div style={{ color: "#444", fontSize: 10, textAlign: "center" }}>
-                    Analysed {new Date(aiAnalysis.fetchedAt).toLocaleString()} · Confidence: {aiAnalysis.confidence_level?.toUpperCase()} · {aiTriggerCount} total analyses this session
+                    Analysed by Groq / Llama 3.3 70B · {new Date(aiAnalysis.fetchedAt).toLocaleString()} · Confidence: {aiAnalysis.confidence_level?.toUpperCase()} · {aiTriggerCount} analyses this session
                   </div>
                 </div>
 
@@ -718,8 +718,8 @@ export default function App() {
                 {/* Auto-detected indicators */}
                 {aiAnalysis.auto_indicators?.length > 0 && (
                   <div style={{ ...card, borderColor: "#f5a62333" }}>
-                    <div style={{ color: "#f5a623", fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>◈ AI AUTO-DETECTED INDICATORS</div>
-                    <div style={{ color: "#666", fontSize: 11, marginBottom: 10 }}>These indicators were inferred from recent headlines and auto-ticked:</div>
+                    <div style={{ color: "#f5a623", fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>◈ GROQ AUTO-DETECTED INDICATORS</div>
+                    <div style={{ color: "#666", fontSize: 11, marginBottom: 10 }}>These indicators were inferred from recent headlines by Groq and auto-ticked:</div>
                     {aiAnalysis.auto_indicators.map(id => {
                       const ind = ALL_INDICATORS.find(i => i.id === id);
                       const sc  = SCENARIO_DEFS.find(s => s.id === ind?.scenario);
@@ -739,7 +739,7 @@ export default function App() {
 
             {!aiAnalysis && !aiLoading && !aiError && (
               <div style={{ ...card, textAlign: "center", padding: 40, color: "#333" }}>
-                No analysis yet. Click "RUN FULL ANALYSIS NOW" above, or wait for new signals in the live feed to auto-trigger.
+                No analysis yet. Click "RUN FULL GROQ ANALYSIS NOW" above, or wait for new signals in the live feed to auto-trigger.
               </div>
             )}
           </div>
@@ -771,7 +771,7 @@ export default function App() {
                 })}
               </div>
               <div style={{ color: "#333", fontSize: 10, marginTop: 10 }}>
-                {aiMarkets ? "Market impact estimates are AI-updated based on current signals and headlines." : "Market impact estimates are baseline defaults — run AI Analysis for live-reasoned updates."}
+                {aiMarkets ? "Market impact estimates are Groq-updated based on current signals and headlines." : "Market impact estimates are baseline defaults — run Groq Analysis for live-reasoned updates."}
               </div>
             </div>
 
@@ -785,7 +785,7 @@ export default function App() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ color: s.color, fontSize: 24, fontWeight: 700, fontFamily: "monospace" }}>{s.probability}%</div>
-                      <div style={{ color: "#444", fontSize: 10 }}>{aiProbs ? "AI probability" : "static probability"}</div>
+                      <div style={{ color: "#444", fontSize: 10 }}>{aiProbs ? "Groq probability" : "static probability"}</div>
                     </div>
                     <svg viewBox="0 0 50 50" width={44} height={44}>
                       <circle cx={25} cy={25} r={20} fill="none" stroke="#222" strokeWidth={5} />
@@ -1042,7 +1042,7 @@ export default function App() {
               {SCENARIOS.map(s => (
                 <div key={s.id} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #111", padding: "6px 0" }}>
                   <span style={{ color: s.color }}>{s.label}</span>
-                  <span style={{ color: s.color, fontWeight: 700 }}>{s.probability}% {aiProbs ? "(AI)" : "(static)"}</span>
+                  <span style={{ color: s.color, fontWeight: 700 }}>{s.probability}% {aiProbs ? "(Groq)" : "(static)"}</span>
                 </div>
               ))}
               <div style={{ marginTop: 12, color: "#555", fontSize: 11 }}>

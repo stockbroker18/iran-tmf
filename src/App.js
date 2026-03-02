@@ -281,7 +281,7 @@ function MarketImpactCard({ asset, mdata, livePrice }) {
 function LivePriceTicker({ prices, loading, lastFetched, onRefresh }) {
   return (
     <div style={{ background: "#060a06", border: "1px solid #0f03", borderRadius: 6, padding: "10px 16px", marginBottom: 12, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-      <span style={{ color: "#0f0", fontSize: 10, letterSpacing: 2, flexShrink: 0 }}>LIVE PRICES</span>
+      <span style={{ color: "#0f0", fontSize: 10, letterSpacing: 2, flexShrink: 0 }}>LIVE CFD PRICES</span>
       {Object.entries(BASELINE).map(([a, b]) => {
         const live = prices[a];
         const chg  = live ? ((live - b.value) / b.value * 100) : null;
@@ -367,6 +367,7 @@ export default function App() {
   const [livePrices,     setLivePrices]     = useState({});
   const [priceLoading,   setPriceLoading]   = useState(false);
   const [priceFetched,   setPriceFetched]   = useState(null);
+  const [priceSource,    setPriceSource]    = useState("TraderMade CFD / US Treasury");
 
   // AI analysis state
   const [aiAnalysis,     setAiAnalysis]     = useLocalStorage("iran_tmd_v15_ai",          null);
@@ -378,19 +379,24 @@ export default function App() {
   // ── Live price fetch ──────────────────────────────────────────────────────
   const fetchPrices = useCallback(async () => {
     setPriceLoading(true);
-    const results = {};
-    const symbolMap = { spx: "^GSPC", brent: "BZ=F", ust5y: "^FVX", dxy: "DX-Y.NYB" };
-    await Promise.allSettled(Object.entries(symbolMap).map(async ([asset, sym]) => {
-      try {
-        const url  = `${CORS_PROXY}${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`)}`;
-        const res  = await fetch(url);
-        const json = await res.json();
-        const body = JSON.parse(json.contents);
-        const price = body?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price) results[asset] = price;
-      } catch {}
-    }));
-    if (Object.keys(results).length > 0) { setLivePrices(results); setPriceFetched(new Date()); }
+    try {
+      const res  = await fetch("/api/prices");
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      // Map api/prices response fields to our asset keys
+      const results = {};
+      if (data.spx   != null) results.spx   = data.spx;
+      if (data.brent != null) results.brent = data.brent;
+      if (data.ust5y != null) results.ust5y = data.ust5y;
+      if (data.dxy   != null) results.dxy   = data.dxy;
+      if (Object.keys(results).length > 0) {
+        setLivePrices(results);
+        setPriceFetched(new Date());
+        setPriceSource(data.source || "TraderMade CFD");
+      }
+    } catch (err) {
+      console.warn("Price fetch failed:", err.message);
+    }
     setPriceLoading(false);
   }, []);
 
@@ -554,7 +560,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.9.1</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.10</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>

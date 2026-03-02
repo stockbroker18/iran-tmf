@@ -425,12 +425,12 @@ export default function App() {
     if (deduped.length === 0) setFeedError("No feed data returned. CORS proxy may be temporarily unavailable.");
   }, []);
 
-  useEffect(() => { if (activeTab === "live feed" || activeTab === "ai analysis") fetchFeeds(); }, [activeTab, fetchFeeds]);
+  // Fetch feeds on launch and every 5 minutes regardless of active tab
+  useEffect(() => { fetchFeeds(); }, [fetchFeeds]);
   useEffect(() => {
-    if (activeTab !== "live feed" && activeTab !== "ai analysis") return;
     const id = setInterval(fetchFeeds, 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [activeTab, fetchFeeds]);
+  }, [fetchFeeds]);
 
   // ── AI Analysis ───────────────────────────────────────────────────────────
   const runAiAnalysis = useCallback(async (items, currentChecked, currentMilitary, currentEcon, prices) => {
@@ -477,14 +477,33 @@ export default function App() {
     setAiLoading(false);
   }, [setChecked, setLastUpdate, setAiAnalysis]);
 
-  // Auto-trigger when new flagged signals appear
+  // Auto-trigger AI on first feed load
+  const hasAutoRun = useRef(false);
+  useEffect(() => {
+    if (feedItems.length > 0 && !hasAutoRun.current && !aiLoading) {
+      hasAutoRun.current = true;
+      runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
+    }
+  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis, aiLoading]);
+
+  // Auto-trigger AI every 5 minutes
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!aiLoading) {
+        runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
+      }
+    }, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis, aiLoading]);
+
+  // Also auto-trigger when new flagged signals appear between cycles
   useEffect(() => {
     const flagged = feedItems.filter(i => i.classification).length;
-    if (flagged > prevFlaggedCount.current && feedItems.length > 0) {
+    if (flagged > prevFlaggedCount.current && feedItems.length > 0 && !aiLoading) {
       prevFlaggedCount.current = flagged;
       runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
     }
-  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis]);
+  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis, aiLoading]);
 
   // ── Compute probabilities (AI overrides static weights if available) ──────
   const aiProbs    = aiAnalysis?.probabilities || null;
@@ -540,7 +559,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.8</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.9</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -584,9 +603,10 @@ export default function App() {
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: aiAnalysis ? "#0f0" : "#333", boxShadow: aiAnalysis ? "0 0 8px #0f0" : "none", flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <span style={{ color: aiAnalysis ? "#0f0" : "#555", fontSize: 11 }}>
-                  {aiAnalysis ? `Groq AI active — last run ${new Date(aiAnalysis.fetchedAt).toLocaleTimeString()} · ${aiTriggerCount} total runs` : "Groq AI not yet run — go to AI Analysis tab or wait for new signals"}
+                  {aiAnalysis ? `Groq AI active — last run ${new Date(aiAnalysis.fetchedAt).toLocaleTimeString()} · ${aiTriggerCount} total runs` : "Groq AI loading — will auto-run on first feed fetch..."}
                 </span>
                 {aiAnalysis && <span style={{ color: "#555", fontSize: 10, marginLeft: 8 }}>confidence: {aiAnalysis.confidence_level?.toUpperCase()}</span>}
+                <span style={{ color: "#0f05", fontSize: 10, marginLeft: 8 }}>· auto-runs every 5 min</span>
               </div>
               <button
                 onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
@@ -739,7 +759,7 @@ export default function App() {
 
             {!aiAnalysis && !aiLoading && !aiError && (
               <div style={{ ...card, textAlign: "center", padding: 40, color: "#333" }}>
-                No analysis yet. Click "RUN FULL GROQ ANALYSIS NOW" above, or wait for new signals in the live feed to auto-trigger.
+                Groq analysis will run automatically once the live feeds finish loading. You can also trigger it manually above.
               </div>
             )}
           </div>
@@ -864,7 +884,7 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · auto-refreshes every 5 min · new signals auto-trigger AI analysis</div>}
+            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · feeds + Groq analysis auto-refresh every 5 min</div>}
             <div style={{ color: "#2ca5e066", fontSize: 10, marginBottom: 8, background: "#0d1a2011", border: "1px solid #2ca5e022", borderRadius: 3, padding: "5px 10px" }}>
               ✈ Telegram feeds (Vahid Online, Iran Intl) use the public RSSHub bridge. If they show no items, the public bridge may be rate-limited — feeds will retry on next refresh.
             </div>

@@ -114,6 +114,9 @@ function classifyHeadline(text) {
 }
 
 // ─── RSS SOURCES ──────────────────────────────────────────────────────────────
+const CORS_PROXY = "https://api.allorigins.win/get?url=";
+const RSSHUB = "https://rsshub-production-0380.up.railway.app";
+
 const RSS_SOURCES = [
   // ── Established wire / broadcast ──────────────────────────────────────────
   { id: "aljazeera",  name: "Al Jazeera",            color: "#c8a84b", url: "https://www.aljazeera.com/xml/rss/all.xml",                              type: "rss" },
@@ -130,11 +133,7 @@ const RSS_SOURCES = [
   { id: "vahidonline", name: "Vahid Online (TG)",     color: "#2ca5e0", url: `${RSSHUB}/telegram/channel/VahidOnline`,                        type: "telegram" },
   { id: "iranintl_tg", name: "Iran Intl (TG)",        color: "#9b59b6", url: `${RSSHUB}/telegram/channel/iranintl`,                           type: "telegram" },
 ];
-const CORS_PROXY = "https://api.allorigins.win/get?url=";
-// RSSHub: replace with your self-hosted instance URL once deployed on Railway
-// e.g. "https://your-app-name.up.railway.app"
-// Until then, falls back to public instance (rate-limited)
-const RSSHUB = "https://rsshub-production-0380.up.railway.app";
+
 
 // ─── LEADERS ──────────────────────────────────────────────────────────────────
 const LEADERS = [

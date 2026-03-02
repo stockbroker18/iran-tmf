@@ -423,6 +423,8 @@ export default function App() {
     setLastFetch(new Date());
     setFeedLoading(false);
     if (deduped.length === 0) setFeedError("No feed data returned. CORS proxy may be temporarily unavailable.");
+    // Trigger AI analysis after every feed refresh (covers launch + 5-min cycle)
+    setTimeout(() => { if (runAiRef.current) runAiRef.current(); }, 500);
   }, []);
 
   // Fetch feeds on launch and every 5 minutes regardless of active tab
@@ -478,32 +480,25 @@ export default function App() {
   }, [setChecked, setLastUpdate, setAiAnalysis]);
 
   // Auto-trigger AI on first feed load
-  const hasAutoRun = useRef(false);
-  useEffect(() => {
-    if (feedItems.length > 0 && !hasAutoRun.current && !aiLoading) {
-      hasAutoRun.current = true;
-      runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
-    }
-  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis, aiLoading]);
+  // Keep a stable ref to latest runAiAnalysis so fetchFeeds can call it without deps issues
+  const runAiRef = useRef(null);
+  useEffect(() => { runAiRef.current = () => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices); },
+    [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis]);
 
-  // Auto-trigger AI every 5 minutes
+  // Auto-trigger AI every 5 minutes via stable interval
   useEffect(() => {
-    const id = setInterval(() => {
-      if (!aiLoading) {
-        runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
-      }
-    }, 5 * 60 * 1000);
+    const id = setInterval(() => { if (runAiRef.current && !aiLoading) runAiRef.current(); }, 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis, aiLoading]);
+  }, [aiLoading]);
 
-  // Also auto-trigger when new flagged signals appear between cycles
+  // Auto-trigger when new flagged signals appear between cycles
   useEffect(() => {
     const flagged = feedItems.filter(i => i.classification).length;
     if (flagged > prevFlaggedCount.current && feedItems.length > 0 && !aiLoading) {
       prevFlaggedCount.current = flagged;
-      runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices);
+      if (runAiRef.current) runAiRef.current();
     }
-  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis, aiLoading]);
+  }, [feedItems, aiLoading]);
 
   // ── Compute probabilities (AI overrides static weights if available) ──────
   const aiProbs    = aiAnalysis?.probabilities || null;
@@ -559,7 +554,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.9</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.9.1</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>

@@ -45,8 +45,8 @@ export default async function handler(req, res) {
 
         if (price == null) throw new Error(`No price for ${sym}`);
 
-        // ^FVX returns yield * 10 — divide to get actual % yield
-        results[asset] = asset === "ust5y" ? price / 10 : price;
+        // ^FVX returns the yield directly as a percentage (e.g. 4.07 = 4.07%)
+        results[asset] = price;
         results[`${asset}_marketState`] = marketState;
 
       } catch (err) {

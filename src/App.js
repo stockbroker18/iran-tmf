@@ -316,114 +316,95 @@ const card = { background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius:
 const TABS = ["dashboard", "ai analysis", "markets", "live feed", "indicators", "leaders", "military", "economic", "notes"];
 
 // ─── BUILD AI PROMPT ──────────────────────────────────────────────────────────
-function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadlines, livePrices) {
+function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadlines, livePrices, polyData) {
   const activeInds     = ALL_INDICATORS.filter(i => checkedIndicators[i.id]);
   const militaryAlerts = Object.entries(militaryRisk).filter(([, v]) => v !== "nominal");
   const econActive     = ECON_TRIGGERS.filter(t => econTriggers[t.id]);
 
+  const now       = new Date();
+  const today     = now.toISOString().slice(0, 10);
+  const daysSince = Math.round((now - new Date("2026-02-28")) / 86400000);
+
+  // Headlines: last 6h, max 20, title only
   const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
-  const recentNews = recentHeadlines
+  const headlines = recentHeadlines
     .filter(h => h.date && new Date(h.date).getTime() > sixHoursAgo)
-    .slice(0, 40)
-    .map(h => "[" + (h.source?.name || "unknown") + "] " + h.title)
+    .slice(0, 20)
+    .map(h => (h.source?.name || "?") + ": " + h.title)
     .join("\n");
 
-  const now           = new Date();
-  const today         = now.toISOString().slice(0, 10);
-  const daysSince     = Math.round((now - new Date("2026-02-28")) / 86400000);
-  const headlineCount = recentNews.split("\n").filter(Boolean).length;
-
+  // Prices: compact single line
   const prices = Object.entries(BASELINE).map(([k, b]) => {
     const live = livePrices[k];
     const chg  = live ? ((live - b.eventDay) / b.eventDay * 100).toFixed(1) : null;
-    if (live) return b.label + ": CURRENT " + b.fmt(live) + " (" + (chg > 0 ? "+" : "") + chg + "% vs Feb 28 " + b.fmt(b.eventDay) + ")";
-    return b.label + ": market closed - Feb 28 ref: " + b.fmt(b.eventDay);
-  }).join("\n");
+    return b.label + " " + (live ? b.fmt(live) + "(" + (chg > 0 ? "+" : "") + chg + "%)" : "closed");
+  }).join(", ");
 
-  const indText  = activeInds.length > 0
-    ? activeInds.map(i => "[" + i.scenario.toUpperCase() + "] " + i.label + " (weight " + i.weight + ")").join("\n")
-    : "None confirmed";
-  const milText  = militaryAlerts.length > 0
-    ? militaryAlerts.map(([u, s]) => u + ": " + s.toUpperCase()).join("\n")
-    : "All units nominal";
-  const econText = econActive.length > 0
-    ? econActive.map(t => t.label).join("\n") : "None triggered";
+  // Active signals: compact
+  const signals = [
+    ...activeInds.map(i => i.scenario.slice(0,3).toUpperCase() + ":" + i.label),
+    ...militaryAlerts.map(([u, s]) => "MIL:" + u + "=" + s),
+    ...econActive.map(t => "ECON:" + t.label),
+  ].join("; ") || "none";
+
+  // Polymarket crowd odds
+  const polyText = polyData?.markets ? Object.values(polyData.markets)
+    .filter(m => m.probability != null)
+    .map(m => m.label + ": " + m.probability + "% (" + (m.volume || "?") + " vol)")
+    .join("; ") : "unavailable";
 
   return (
-    "You are a quantitative geopolitical risk analyst. Incorporate the following expert consensus and open-source intelligence record when setting probabilities and market impacts.\n\n" +
+    "Iran war analyst. Day " + daysSince + " (" + today + ").\n" +
+    "CONTEXT: IRGC controls succession. Hormuz ~closed. Apr6 Trump deadline. Houthis intact. " +
+    "Brent -20% on Mar23 peace signal.\n" +
+    "PRICES: " + prices + "\n" +
+    "SIGNALS: " + signals + "\n" +
 
-    "=== EXPERT INTELLIGENCE LAYER (CSIS, Brookings, PBS, CNN, NPR — as of March 28 2026) ===\n\n" +
+    "=== THREE-SOURCE SYNTHESIS (Bridgewater method) ===\n" +
+    "SOURCE 1 — EXPERT ANALYST CONSENSUS (weighted by track record):\n" +
+    "  HIGH WEIGHT: CSIS (Seth Jones, Mona Yacoubian, Jon Alterman) — embedded sourcing, track record on Iran\n" +
+    "  HIGH WEIGHT: Anthony Cordesman (CSIS) — 40yr ME military analysis record\n" +
+    "  MED WEIGHT: Brookings (O\'Hanlon, Gordon) — sound on US strategy, less on internal Iran dynamics\n" +
+    "  MED WEIGHT: Behnam Ben Taleblu (FDD) — strong on IRGC structure, hawkish bias\n" +
+    "  LOW WEIGHT: CNN/PBS talking heads — useful for US political framing, not Iran internal\n" +
+    "  CONSENSUS VIEW: StatusQuo/IRGC-junta = ~55-65%, Reform/ceasefire = 20-30%, Collapse = 10-15%\n" +
+    "SOURCE 2 — POLYMARKET CROWD ODDS (financially-backed, ~$50M+ volume on Iran markets):\n" +
+    "  " + polyText + "\n" +
+    "  NOTE: Polymarket has shown insider trading patterns on Iran — treat as informed but potentially noisy\n" +
+    "SOURCE 3 — LIVE OSINT SIGNALS (from dashboard above)\n\n" +
 
-    "MILITARY/STRATEGIC SITUATION (Day " + daysSince + " of active war):\n" +
-    "- US-Israeli 'Operation Epic Fury' began Feb 28 2026. Air campaign ongoing through week 4.\n" +
-    "- Up to 40 senior Iranian officials killed including Khamenei, IRGC chief, defense minister, now IRGC navy chief (killed Mar 27).\n" +
-    "- Israel has achieved air superiority over Iran (CSIS). 90% decline in Iranian missile launch rate.\n" +
-    "- Iran's proxy network substantially broken: Hezbollah dramatically weakened (Nasrallah killed Sep 2024), Hamas catastrophically degraded, key IRGC liaison killed.\n" +
-    "- Iran's nuclear program set back 8-15 years. Natanz, Fordow, Isfahan struck twice (Jun 2025 and Feb-Mar 2026). IAEA confirmed Natanz damage Mar 3.\n" +
-    "- US GBU-57 MOP inventory potentially exhausted (est. 0-4 remaining from ~20 pre-war).\n" +
-    "- Hezbollah launched drones/rockets on Israel Mar 2 — dramatically expanded the war. Houthis NOT yet engaged but capability intact (control Bab al-Mandab).\n" +
-    "- Iran executing 'multidomain punishment campaign' — energy, cyber, maritime — to coerce US/partners (CSIS, Alterman Mar 23).\n" +
-    "- CSIS (Mar 27): Iran has shifted from calibrated retaliation to rapid escalation strategy — going for broke given existential stakes.\n\n" +
+    "SYNTHESIS INSTRUCTIONS:\n" +
+    "1. Start with expert consensus as your prior (highest weight — these analysts have Iran-specific sourcing)\n" +
+    "2. Update with Polymarket crowd odds — especially where crowd DEVIATES from experts by >10pp (this is signal)\n" +
+    "3. Further update with live OSINT signals and headlines\n" +
+    "4. Show your work: if you deviate from expert consensus, briefly state why in analyst_summary\n" +
+    "5. Probabilities should reflect ALL THREE sources blended, not just one\n\n" +
 
-    "POLITICAL/SUCCESSION SITUATION:\n" +
-    "- IRGC appears firmly in control of new leadership apparatus (PBS NewsHour Mar ~15). New statement hit 'all the usual spots' — Ayatollah IRGC, not a reformist.\n" +
-    "- Parliament Speaker Ghalibaf (hardliner) actively denying any US negotiations, demanding 'remorseful punishment of aggressors'.\n" +
-    "- Trump desperate to declare victory but Iran not cooperating. CNN (Mar 26): 'Iran doesn't seem susceptible to the art of the deal.'\n" +
-    "- Trump extended Hormuz deadline to Apr 6 2026 (from Mar 26). Cited 'ongoing talks'. Iran countered with 5 conditions including war reparations + Hormuz rights.\n" +
-    "- VP JD Vance mentioned as possible lead negotiator. Pakistan/Turkey as potential mediators.\n" +
-    "- Brookings: Trump has not settled on clear objectives. Opportunity to declare victory exists but requires face-saving exit for Iran — which Trump's personality resists.\n" +
-    "- Regime change scenario: Behnam Ben Taleblu (FDD): 'Can a military victory take the place of a political victory?' — key unanswered question.\n\n" +
-
-    "ENERGY/ECONOMIC SITUATION:\n" +
-    "- Strait of Hormuz: pre-war ~138-153 vessels/day, down to 3-6 commercial transits/day by Mar 7 (Windward.ai AIS). Near-total shutdown.\n" +
-    "- 7 of 12 P&I Clubs cancelled war risk coverage Mar 1-2. ~90% of world ocean tonnage uninsured. War risk premiums +1,000%.\n" +
-    "- CSIS: Bab al-Mandab (Houthis) also at risk — 9% global seaborne oil, 12% maritime trade.\n" +
-    "- IEA Executive Director Birol: '40 oil institutions severely damaged across 9 countries.' No country immune.\n" +
-    "- Trump peace signal Mar 23 drove Brent down ~20% briefly. Shows extreme sensitivity to ceasefire signals.\n" +
-    "- Qatar North Field East LNG expansion delayed to end-2026 or beyond.\n" +
-    "- CSIS: Saudi East-West Pipeline bypass capacity ~2.4mb/d spare vs 6mb/d Saudi Gulf exports — cannot compensate for Hormuz closure.\n" +
-    "- Pre-war protests (Jan 2026): 5 million Iranians, 7,000-32,000 deaths. Economic devastation precedes war damage.\n\n" +
-
-    "SCENARIO ASSESSMENT (expert consensus):\n" +
-    "- STATUS QUO / CONTINUITY (IRGC-controlled hardline successor): Most analysts assess this as the CURRENT DE FACTO STATE. IRGC in control, war ongoing, escalation not de-escalation. ~40-50% probability per expert framing.\n" +
-    "- MILITARY JUNTA / DEEPER IRGC LOCK: Already partially achieved. Risk is escalation to ground ops, Houthi activation, Hormuz total closure. ~15-20%.\n" +
-    "- CONTROLLED REFORM / CEASEFIRE: Trump wants this. Requires face-saving exit for Iran, Witkoff/Kushner back-channel, Apr 6 Hormuz deadline as lever. JD Vance lead. ~20-30% if Apr 6 deadline pressure works.\n" +
-    "- REGIME COLLAPSE: Requires military defections not yet seen. Proxy network already destroyed. Iranian public exhausted. Ben Taleblu: military victory does not equal political victory. ~10-15%.\n\n" +
-
-    "KEY NEAR-TERM CATALYSTS TO WATCH:\n" +
-    "1. Apr 6 Hormuz deadline — Trump's stated red line for power plant strikes\n" +
-    "2. Houthi activation / Bab al-Mandab closure\n" +
-    "3. US ground troop deployment decision (thousands staged, not yet committed)\n" +
-    "4. Ghalibaf or IRGC publicly accepting/rejecting negotiations\n" +
-    "5. Iranian military defections (not yet observed)\n\n" +
-
-    "=== LIVE DASHBOARD DATA ===\n\n" +
-    "Today: " + today + " (Day " + daysSince + " of conflict)\n\n" +
-    "CURRENT MARKET PRICES:\n" + prices + "\n\n" +
-    "CONFIRMED OSINT INDICATORS (" + activeInds.length + " active):\n" + indText + "\n\n" +
-    "MILITARY STATUS:\n" + milText + "\n\n" +
-    "ECONOMIC TRIGGERS:\n" + econText + "\n\n" +
-    "HEADLINES (last 6h, " + headlineCount + " items):\n" + (recentNews || "None in window") + "\n\n" +
-    "---\n" +
-    "INSTRUCTIONS:\n" +
-    "1. Use the expert intelligence layer above as your baseline assessment. Adjust with live headlines and confirmed indicators.\n" +
-    "2. Market impacts are FORWARD PROJECTIONS from current prices — not from Feb 28.\n" +
-    "3. Ceasefire/reform scenario: if Trump Apr 6 deadline signal is present in headlines, weight this higher. Brent could fall 15-25% on a credible ceasefire.\n" +
-    "4. Hormuz: current near-closure is already in prices. Houthi activation or full closure = additional shock.\n" +
-    "5. Be specific in rationale — cite the expert framing, market levels, or specific headlines.\n" +
-    "6. Probabilities must sum to 100. JSON structure only below — replace all zeros.\n\n" +
-    'Reply with ONLY valid JSON:\n' +
+    "HEADLINES:\n" + (headlines || "none") + "\n\n" +
+    "Output JSON only. Probabilities sum=100. Forward projections from current prices. " +
+    "Rationale max 15 words. analyst_summary 2 sentences: (1) dominant scenario + sources driving it, (2) where crowd vs experts diverge.\n" +
     '{"probabilities":{"status_quo":0,"military_junta":0,"reform":0,"collapse":0},' +
-    '"markets":{"status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific","ci_label":"x% to y%","isBps":false}},' +
-    '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false}},' +
-    '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false}},' +
-    '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false}}},' +
+    '"markets":{"status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"","ci_label":"","isBps":false},' +
+    '"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"","ci_label":"","isBps":true},' +
+    '"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"","ci_label":"","isBps":false}},' +
+    '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"","ci_label":"","isBps":true},' +
+    '"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"","ci_label":"","isBps":false}},' +
+    '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"","ci_label":"","isBps":true},' +
+    '"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"","ci_label":"","isBps":false}},' +
+    '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"","ci_label":"","isBps":false},' +
+    '"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"","ci_label":"","isBps":true},' +
+    '"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"","ci_label":"","isBps":false}}},' +
     '"auto_indicators":[],' +
-    '"analyst_summary":"3 sentences: (1) current dominant scenario per expert consensus, (2) key live signal moving probabilities today, (3) most important catalyst to watch in next 24h.",' +
-    '"key_risks":["specific risk 1","specific risk 2","specific risk 3"],' +
+    '"analyst_summary":"",' +
+    '"key_risks":["","",""],' +
     '"confidence_level":"medium",' +
-    '"last_analysed":"' + now.toISOString() + '"}\n\n' +
-    "All probabilities must sum to 100."
+    '"last_analysed":"' + now.toISOString() + '"}'
   );
 }
 
@@ -444,6 +425,8 @@ export default function App() {
   const [livePrices,     setLivePrices]     = useState({});
   const [priceLoading,   setPriceLoading]   = useState(false);
   const [priceFetched,   setPriceFetched]   = useState(null);
+  const [polyData,       setPolyData]       = useState(null);
+  const [polyLoading,    setPolyLoading]    = useState(false);
 
   // AI analysis state
   const [aiAnalysis,     setAiAnalysis]     = useState(null); // session only — fresh analysis on each visit
@@ -476,6 +459,22 @@ export default function App() {
   }, []);
 
   useEffect(() => { fetchPrices(); }, [fetchPrices]);
+
+  // ── Polymarket odds fetch ─────────────────────────────────────────────────
+  const fetchPolymarket = useCallback(async () => {
+    setPolyLoading(true);
+    try {
+      const res = await fetch("/api/polymarket");
+      const data = await res.json();
+      if (data.markets) setPolyData(data);
+    } catch (err) { console.warn("Polymarket fetch failed:", err.message); }
+    setPolyLoading(false);
+  }, []);
+  useEffect(() => { fetchPolymarket(); }, [fetchPolymarket]);
+  useEffect(() => {
+    const id = setInterval(fetchPolymarket, 30 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [fetchPolymarket]);
 
   // ── RSS feed fetch ────────────────────────────────────────────────────────
   const fetchFeeds = useCallback(async () => {
@@ -511,16 +510,16 @@ export default function App() {
   // Fetch feeds on launch and every 5 minutes regardless of active tab
   useEffect(() => { fetchFeeds(); }, [fetchFeeds]);
   useEffect(() => {
-    const id = setInterval(fetchFeeds, 5 * 60 * 1000);
+    const id = setInterval(fetchFeeds, 30 * 60 * 1000);
     return () => clearInterval(id);
   }, [fetchFeeds]);
 
   // ── AI Analysis ───────────────────────────────────────────────────────────
-  const runAiAnalysis = useCallback(async (items, currentChecked, currentMilitary, currentEcon, prices) => {
+  const runAiAnalysis = useCallback(async (items, currentChecked, currentMilitary, currentEcon, prices, poly) => {
     setAiLoading(true);
     setAiError(null);
     try {
-      const prompt = buildPrompt(currentChecked, currentMilitary, currentEcon, items, prices);
+      const prompt = buildPrompt(currentChecked, currentMilitary, currentEcon, items, prices, poly);
 
       // Call via /api/analyze — Vercel serverless proxy (keeps API key server-side)
       const response = await fetch("/api/analyze", {
@@ -563,12 +562,12 @@ export default function App() {
   // Auto-trigger AI on first feed load
   // Keep a stable ref to latest runAiAnalysis so fetchFeeds can call it without deps issues
   const runAiRef = useRef(null);
-  useEffect(() => { runAiRef.current = () => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices); },
-    [feedItems, checked, militaryRisk, econTriggers, livePrices, runAiAnalysis]);
+  useEffect(() => { runAiRef.current = () => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData); },
+    [feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, runAiAnalysis]);
 
   // Auto-trigger AI every 5 minutes via stable interval
   useEffect(() => {
-    const id = setInterval(() => { if (runAiRef.current && !aiLoading) runAiRef.current(); }, 5 * 60 * 1000);
+    const id = setInterval(() => { if (runAiRef.current && !aiLoading) runAiRef.current(); }, 30 * 60 * 1000);
     return () => clearInterval(id);
   }, [aiLoading]);
 
@@ -635,7 +634,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.15</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.18</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -685,11 +684,52 @@ export default function App() {
                 <span style={{ color: "#0f05", fontSize: 10, marginLeft: 8 }}>· auto-runs every 5 min</span>
               </div>
               <button
-                onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
+                onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData)}
                 disabled={aiLoading}
                 style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "5px 14px", borderRadius: 3, fontSize: 10, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 1 }}>
                 {aiLoading ? "◈ ANALYSING..." : "◈ RUN GROQ ANALYSIS"}
               </button>
+            </div>
+
+            {/* ── POLYMARKET CROWD ODDS ── */}
+            <div style={{ background: "#080510", border: "1px solid #6633ff44", borderRadius: 6, padding: 14, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <span style={{ color: "#9966ff", fontSize: 11, letterSpacing: 2, fontWeight: 700 }}>◈ POLYMARKET CROWD ODDS</span>
+                  <span style={{ color: "#6633ff66", fontSize: 9, marginLeft: 8 }}>financially-backed · {polyData ? new Date(polyData.fetchedAt).toLocaleTimeString() : "loading..."}</span>
+                </div>
+                <button onClick={fetchPolymarket} disabled={polyLoading}
+                  style={{ background: "transparent", border: "1px solid #6633ff44", color: "#9966ff", padding: "3px 8px", borderRadius: 3, fontSize: 9, cursor: "pointer", fontFamily: "monospace" }}>
+                  {polyLoading ? "FETCHING..." : "REFRESH"}
+                </button>
+              </div>
+              {polyData?.markets && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+                  {Object.values(polyData.markets).filter(m => m.probability != null).map(m => {
+                    const sc = SCENARIO_DEFS.find(s => s.id === m.scenario);
+                    const isHighDivergence = aiAnalysis?.probabilities && Math.abs((aiAnalysis.probabilities[m.scenario] || 0) - m.probability) > 15;
+                    return (
+                      <div key={m.label} style={{ background: "#0a0814", border: `1px solid ${sc?.color || "#333"}33`, borderRadius: 4, padding: "8px 10px" }}>
+                        <div style={{ color: "#666", fontSize: 9, letterSpacing: 1, marginBottom: 4 }}>{m.label.toUpperCase()}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: sc?.color || "#9966ff", fontSize: 20, fontWeight: 700, fontFamily: "monospace" }}>{m.probability}%</span>
+                          {isHighDivergence && (
+                            <span style={{ color: "#f5a623", fontSize: 9, border: "1px solid #f5a62344", padding: "1px 4px", borderRadius: 2 }}>
+                              ⚡ {Math.abs((aiAnalysis.probabilities[m.scenario] || 0) - m.probability)}pp divergence
+                            </span>
+                          )}
+                        </div>
+                        {m.volume && <div style={{ color: "#444", fontSize: 9, marginTop: 2 }}>${m.volume} traded</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {!polyData && !polyLoading && <div style={{ color: "#444", fontSize: 10 }}>Polymarket data unavailable — will retry on next refresh</div>}
+              {polyLoading && <div style={{ color: "#9966ff66", fontSize: 10 }}>Fetching crowd odds...</div>}
+              <div style={{ color: "#333", fontSize: 9, marginTop: 8 }}>
+                Source: Polymarket Gamma API · Note: insider trading patterns have been observed on Iran markets — treat as informed signal, not gospel
+              </div>
             </div>
 
             <div style={card}>
@@ -749,7 +789,7 @@ export default function App() {
                   </div>
                 </div>
                 <button
-                  onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices)}
+                  onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData)}
                   disabled={aiLoading}
                   style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "8px 20px", borderRadius: 3, fontSize: 11, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 2, boxShadow: aiLoading ? "none" : "0 0 12px #0f04" }}>
                   {aiLoading ? "◈ ANALYSING IN PROGRESS..." : "◈ RUN FULL GROQ ANALYSIS NOW"}
@@ -994,7 +1034,7 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · feeds + Groq analysis auto-refresh every 5 min</div>}
+            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · feeds + Groq analysis auto-refresh every 30 min</div>}
             <div style={{ color: "#2ca5e066", fontSize: 10, marginBottom: 8, background: "#0d1a2011", border: "1px solid #2ca5e022", borderRadius: 3, padding: "5px 10px" }}>
               ✈ Telegram feeds (Vahid Online, Iran Intl) use the public RSSHub bridge. If they show no items, the public bridge may be rate-limited — feeds will retry on next refresh.
             </div>

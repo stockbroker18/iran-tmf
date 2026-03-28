@@ -321,7 +321,6 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
   const militaryAlerts = Object.entries(militaryRisk).filter(([, v]) => v !== "nominal");
   const econActive     = ECON_TRIGGERS.filter(t => econTriggers[t.id]);
 
-  // 6-hour window so quiet periods still have context
   const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
   const recentNews = recentHeadlines
     .filter(h => h.date && new Date(h.date).getTime() > sixHoursAgo)
@@ -329,18 +328,104 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     .map(h => "[" + (h.source?.name || "unknown") + "] " + h.title)
     .join("\n");
 
-  // Real current date so Groq reasons about elapsed time
-  const now       = new Date();
-  const today     = now.toISOString().slice(0, 10);
-  const daysSince = Math.round((now - new Date("2026-02-28")) / 86400000);
+  const now           = new Date();
+  const today         = now.toISOString().slice(0, 10);
+  const daysSince     = Math.round((now - new Date("2026-02-28")) / 86400000);
   const headlineCount = recentNews.split("\n").filter(Boolean).length;
 
   const prices = Object.entries(BASELINE).map(([k, b]) => {
     const live = livePrices[k];
-    const chgVsEvent = live ? ((live - b.eventDay) / b.eventDay * 100).toFixed(1) : null;
-    if (live) {
-      return b.label + ": CURRENT " + b.fmt(live) + " (+" + chgVsEvent + "% vs Feb 28 event-day " + b.fmt(b.eventDay) + ")";
-    }
+    const chg  = live ? ((live - b.eventDay) / b.eventDay * 100).toFixed(1) : null;
+    if (live) return b.label + ": CURRENT " + b.fmt(live) + " (" + (chg > 0 ? "+" : "") + chg + "% vs Feb 28 " + b.fmt(b.eventDay) + ")";
+    return b.label + ": market closed - Feb 28 ref: " + b.fmt(b.eventDay);
+  }).join("\n");
+
+  const indText  = activeInds.length > 0
+    ? activeInds.map(i => "[" + i.scenario.toUpperCase() + "] " + i.label + " (weight " + i.weight + ")").join("\n")
+    : "None confirmed";
+  const milText  = militaryAlerts.length > 0
+    ? militaryAlerts.map(([u, s]) => u + ": " + s.toUpperCase()).join("\n")
+    : "All units nominal";
+  const econText = econActive.length > 0
+    ? econActive.map(t => t.label).join("\n") : "None triggered";
+
+  return (
+    "You are a quantitative geopolitical risk analyst. Incorporate the following expert consensus and open-source intelligence record when setting probabilities and market impacts.\n\n" +
+
+    "=== EXPERT INTELLIGENCE LAYER (CSIS, Brookings, PBS, CNN, NPR — as of March 28 2026) ===\n\n" +
+
+    "MILITARY/STRATEGIC SITUATION (Day " + daysSince + " of active war):\n" +
+    "- US-Israeli 'Operation Epic Fury' began Feb 28 2026. Air campaign ongoing through week 4.\n" +
+    "- Up to 40 senior Iranian officials killed including Khamenei, IRGC chief, defense minister, now IRGC navy chief (killed Mar 27).\n" +
+    "- Israel has achieved air superiority over Iran (CSIS). 90% decline in Iranian missile launch rate.\n" +
+    "- Iran's proxy network substantially broken: Hezbollah dramatically weakened (Nasrallah killed Sep 2024), Hamas catastrophically degraded, key IRGC liaison killed.\n" +
+    "- Iran's nuclear program set back 8-15 years. Natanz, Fordow, Isfahan struck twice (Jun 2025 and Feb-Mar 2026). IAEA confirmed Natanz damage Mar 3.\n" +
+    "- US GBU-57 MOP inventory potentially exhausted (est. 0-4 remaining from ~20 pre-war).\n" +
+    "- Hezbollah launched drones/rockets on Israel Mar 2 — dramatically expanded the war. Houthis NOT yet engaged but capability intact (control Bab al-Mandab).\n" +
+    "- Iran executing 'multidomain punishment campaign' — energy, cyber, maritime — to coerce US/partners (CSIS, Alterman Mar 23).\n" +
+    "- CSIS (Mar 27): Iran has shifted from calibrated retaliation to rapid escalation strategy — going for broke given existential stakes.\n\n" +
+
+    "POLITICAL/SUCCESSION SITUATION:\n" +
+    "- IRGC appears firmly in control of new leadership apparatus (PBS NewsHour Mar ~15). New statement hit 'all the usual spots' — Ayatollah IRGC, not a reformist.\n" +
+    "- Parliament Speaker Ghalibaf (hardliner) actively denying any US negotiations, demanding 'remorseful punishment of aggressors'.\n" +
+    "- Trump desperate to declare victory but Iran not cooperating. CNN (Mar 26): 'Iran doesn't seem susceptible to the art of the deal.'\n" +
+    "- Trump extended Hormuz deadline to Apr 6 2026 (from Mar 26). Cited 'ongoing talks'. Iran countered with 5 conditions including war reparations + Hormuz rights.\n" +
+    "- VP JD Vance mentioned as possible lead negotiator. Pakistan/Turkey as potential mediators.\n" +
+    "- Brookings: Trump has not settled on clear objectives. Opportunity to declare victory exists but requires face-saving exit for Iran — which Trump's personality resists.\n" +
+    "- Regime change scenario: Behnam Ben Taleblu (FDD): 'Can a military victory take the place of a political victory?' — key unanswered question.\n\n" +
+
+    "ENERGY/ECONOMIC SITUATION:\n" +
+    "- Strait of Hormuz: pre-war ~138-153 vessels/day, down to 3-6 commercial transits/day by Mar 7 (Windward.ai AIS). Near-total shutdown.\n" +
+    "- 7 of 12 P&I Clubs cancelled war risk coverage Mar 1-2. ~90% of world ocean tonnage uninsured. War risk premiums +1,000%.\n" +
+    "- CSIS: Bab al-Mandab (Houthis) also at risk — 9% global seaborne oil, 12% maritime trade.\n" +
+    "- IEA Executive Director Birol: '40 oil institutions severely damaged across 9 countries.' No country immune.\n" +
+    "- Trump peace signal Mar 23 drove Brent down ~20% briefly. Shows extreme sensitivity to ceasefire signals.\n" +
+    "- Qatar North Field East LNG expansion delayed to end-2026 or beyond.\n" +
+    "- CSIS: Saudi East-West Pipeline bypass capacity ~2.4mb/d spare vs 6mb/d Saudi Gulf exports — cannot compensate for Hormuz closure.\n" +
+    "- Pre-war protests (Jan 2026): 5 million Iranians, 7,000-32,000 deaths. Economic devastation precedes war damage.\n\n" +
+
+    "SCENARIO ASSESSMENT (expert consensus):\n" +
+    "- STATUS QUO / CONTINUITY (IRGC-controlled hardline successor): Most analysts assess this as the CURRENT DE FACTO STATE. IRGC in control, war ongoing, escalation not de-escalation. ~40-50% probability per expert framing.\n" +
+    "- MILITARY JUNTA / DEEPER IRGC LOCK: Already partially achieved. Risk is escalation to ground ops, Houthi activation, Hormuz total closure. ~15-20%.\n" +
+    "- CONTROLLED REFORM / CEASEFIRE: Trump wants this. Requires face-saving exit for Iran, Witkoff/Kushner back-channel, Apr 6 Hormuz deadline as lever. JD Vance lead. ~20-30% if Apr 6 deadline pressure works.\n" +
+    "- REGIME COLLAPSE: Requires military defections not yet seen. Proxy network already destroyed. Iranian public exhausted. Ben Taleblu: military victory does not equal political victory. ~10-15%.\n\n" +
+
+    "KEY NEAR-TERM CATALYSTS TO WATCH:\n" +
+    "1. Apr 6 Hormuz deadline — Trump's stated red line for power plant strikes\n" +
+    "2. Houthi activation / Bab al-Mandab closure\n" +
+    "3. US ground troop deployment decision (thousands staged, not yet committed)\n" +
+    "4. Ghalibaf or IRGC publicly accepting/rejecting negotiations\n" +
+    "5. Iranian military defections (not yet observed)\n\n" +
+
+    "=== LIVE DASHBOARD DATA ===\n\n" +
+    "Today: " + today + " (Day " + daysSince + " of conflict)\n\n" +
+    "CURRENT MARKET PRICES:\n" + prices + "\n\n" +
+    "CONFIRMED OSINT INDICATORS (" + activeInds.length + " active):\n" + indText + "\n\n" +
+    "MILITARY STATUS:\n" + milText + "\n\n" +
+    "ECONOMIC TRIGGERS:\n" + econText + "\n\n" +
+    "HEADLINES (last 6h, " + headlineCount + " items):\n" + (recentNews || "None in window") + "\n\n" +
+    "---\n" +
+    "INSTRUCTIONS:\n" +
+    "1. Use the expert intelligence layer above as your baseline assessment. Adjust with live headlines and confirmed indicators.\n" +
+    "2. Market impacts are FORWARD PROJECTIONS from current prices — not from Feb 28.\n" +
+    "3. Ceasefire/reform scenario: if Trump Apr 6 deadline signal is present in headlines, weight this higher. Brent could fall 15-25% on a credible ceasefire.\n" +
+    "4. Hormuz: current near-closure is already in prices. Houthi activation or full closure = additional shock.\n" +
+    "5. Be specific in rationale — cite the expert framing, market levels, or specific headlines.\n" +
+    "6. Probabilities must sum to 100. JSON structure only below — replace all zeros.\n\n" +
+    'Reply with ONLY valid JSON:\n' +
+    '{"probabilities":{"status_quo":0,"military_junta":0,"reform":0,"collapse":0},' +
+    '"markets":{"status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific","ci_label":"x% to y%","isBps":false}},' +
+    '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false}},' +
+    '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false}},' +
+    '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific","ci_label":"x% to y%","isBps":false}}},' +
+    '"auto_indicators":[],' +
+    '"analyst_summary":"3 sentences: (1) current dominant scenario per expert consensus, (2) key live signal moving probabilities today, (3) most important catalyst to watch in next 24h.",' +
+    '"key_risks":["specific risk 1","specific risk 2","specific risk 3"],' +
+    '"confidence_level":"medium",' +
+    '"last_analysed":"' + now.toISOString() + '"}\n\n' +
+    "All probabilities must sum to 100."
+  );
+}
     return b.label + ": market closed - Feb 28 event-day ref: " + b.fmt(b.eventDay);
   }).join("\n");
 
@@ -598,7 +683,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.14</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.15</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>

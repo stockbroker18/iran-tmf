@@ -598,7 +598,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.13</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.14</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -864,33 +864,67 @@ export default function App() {
             ))}
 
             {/* Probability-weighted summary */}
-            <div style={card}>
-              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>PROBABILITY-WEIGHTED EXPECTED MOVE (7-DAY)</div>
-              {Object.keys(BASELINE).map(asset => {
-                const isBps = DEFAULT_MARKETS.status_quo[asset].isBps;
-                const wMid  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_mid  * s.probability / 100), 0);
-                const wLow  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_low  * s.probability / 100), 0);
-                const wHigh = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_high * s.probability / 100), 0);
-                const base  = livePrices[asset] || BASELINE[asset].eventDay;
-                const midLvl= isBps ? base + wMid / 100 : base * (1 + wMid / 100);
-                const dc    = wMid > 1 ? "#2ecc71" : wMid < -1 ? "#e74c3c" : "#f5a623";
-                const midStr= isBps ? `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}bps` : `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}%`;
-                const ciStr = isBps ? `${wLow.toFixed(0)} to ${wHigh.toFixed(0)}bps` : `${wLow.toFixed(1)}% to ${wHigh.toFixed(1)}%`;
-                return (
-                  <div key={asset} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #111", flexWrap: "wrap" }}>
-                    <div style={{ width: 150 }}>
-                      <div style={{ color: "#aaa", fontSize: 12 }}>{BASELINE[asset].label}</div>
-                      <div style={{ color: "#555", fontSize: 10 }}>{BASELINE[asset].fmt(base)}</div>
-                    </div>
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span style={{ color: dc, fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{midStr}</span>
-                      <span style={{ color: dc, fontSize: 11 }}>→ {BASELINE[asset].fmt(midLvl)}</span>
-                      <span style={{ color: "#444", fontSize: 10, background: "#1a1a1a", padding: "2px 6px", borderRadius: 3 }}>90% CI: {ciStr}</span>
-                    </div>
+            {/* ── PROBABILITY-WEIGHTED TRADING OUTLOOK ── */}
+            <div style={{ background: "#03080a", border: "2px solid #0f0", borderRadius: 8, padding: 20, marginBottom: 16, boxShadow: "0 0 30px #0f012" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                <div>
+                  <div style={{ color: "#0f0", fontSize: 13, letterSpacing: 3, fontWeight: 700 }}>◈ PROBABILITY-WEIGHTED TRADING OUTLOOK</div>
+                  <div style={{ color: "#0f06", fontSize: 10, marginTop: 2 }}>
+                    Expected move blended across all scenarios · 7-day horizon · {aiProbs ? "Groq-reasoned probabilities" : "static indicator weights"}
                   </div>
-                );
-              })}
-              <div style={{ color: "#2a2a2a", fontSize: 10, marginTop: 10 }}>For analytical purposes only. Not financial advice.</div>
+                </div>
+                <div style={{ color: "#0f04", fontSize: 10, border: "1px solid #0f03", padding: "4px 10px", borderRadius: 3 }}>FOR ANALYTICAL PURPOSES ONLY · NOT FINANCIAL ADVICE</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+                {Object.keys(BASELINE).map(asset => {
+                  const isBps  = DEFAULT_MARKETS.status_quo[asset].isBps;
+                  const wMid   = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_mid  * s.probability / 100), 0);
+                  const wLow   = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_low  * s.probability / 100), 0);
+                  const wHigh  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_high * s.probability / 100), 0);
+                  const base   = livePrices[asset] || BASELINE[asset].eventDay;
+                  const midLvl = isBps ? base + wMid / 100 : base * (1 + wMid / 100);
+                  const lowLvl = isBps ? base + wLow / 100 : base * (1 + wLow / 100);
+                  const hiLvl  = isBps ? base + wHigh / 100 : base * (1 + wHigh / 100);
+                  const dc     = wMid > 1 ? "#2ecc71" : wMid < -1 ? "#e74c3c" : "#f5a623";
+                  const arrow  = wMid > 1 ? "▲" : wMid < -1 ? "▼" : "►";
+                  const midStr = isBps ? `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}bps` : `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}%`;
+                  const conviction = Math.abs(wMid) > 3 ? "HIGH" : Math.abs(wMid) > 1 ? "MODERATE" : "LOW";
+                  const convColor  = conviction === "HIGH" ? "#e74c3c" : conviction === "MODERATE" ? "#f5a623" : "#555";
+                  return (
+                    <div key={asset} style={{ background: `${dc}09`, border: `1px solid ${dc}44`, borderRadius: 6, padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ color: "#888", fontSize: 10, letterSpacing: 1 }}>{BASELINE[asset].label.toUpperCase()}</span>
+                        <span style={{ color: convColor, fontSize: 9, border: `1px solid ${convColor}44`, padding: "1px 5px", borderRadius: 2 }}>{conviction}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                        <span style={{ color: dc, fontSize: 10 }}>{arrow}</span>
+                        <span style={{ color: dc, fontSize: 26, fontWeight: 700, fontFamily: "monospace", lineHeight: 1 }}>{midStr}</span>
+                      </div>
+                      <div style={{ color: dc, fontSize: 13, fontFamily: "monospace", marginBottom: 8 }}>
+                        Target: {BASELINE[asset].fmt(midLvl)}
+                      </div>
+                      <div style={{ color: "#444", fontSize: 10, marginBottom: 6 }}>Now: {BASELINE[asset].fmt(base)}</div>
+                      <div style={{ background: "#111", borderRadius: 3, height: 6, marginBottom: 6, position: "relative", overflow: "hidden" }}>
+                        <div style={{
+                          position: "absolute",
+                          left: "50%",
+                          width: `${Math.min(80, Math.abs(wMid) * 8)}%`,
+                          height: "100%",
+                          background: `${dc}55`,
+                          transform: wMid >= 0 ? "translateX(0)" : "translateX(-100%)",
+                          borderRadius: 3,
+                        }} />
+                        <div style={{ position: "absolute", left: "50%", width: 2, height: "100%", background: "#333" }} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#444" }}>
+                        <span>Bear: {BASELINE[asset].fmt(Math.min(lowLvl, hiLvl))}</span>
+                        <span style={{ color: "#333" }}>90% CI</span>
+                        <span>Bull: {BASELINE[asset].fmt(Math.max(lowLvl, hiLvl))}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}

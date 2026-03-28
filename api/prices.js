@@ -1,79 +1,74 @@
-// Vercel serverless function — fetches live market prices via Twelve Data
-// Free tier: 800 calls/day, no expiry, no credit card required
-// Get a free key at: https://twelvedata.com/apikey
-//
-// Symbols used:
-//   SPX     — S&P 500 index (tracks E-mini ES futures during off-hours)
-//   BRENT   — Brent Crude Oil
-//   DXY     — US Dollar Index
-//   UST5Y via US5Y (5-Year Treasury Yield)
-// All four fetched in a single batched API call to minimise quota usage
+// Vercel serverless function — live market prices via Yahoo Finance
+// No API key required. Runs server-side so CORS is not an issue.
+// Symbols:
+//   ^GSPC  = S&P 500 spot index
+//   BZ=F   = Brent Crude front-month futures (most liquid Brent proxy)
+//   ^FVX   = 5-Year Treasury Yield (CBOE)
+//   DX-Y.NYB = US Dollar Index (DXY)
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const apiKey = process.env.TWELVEDATA_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({
-      error: "TWELVEDATA_API_KEY not set. Get a free key at twelvedata.com/apikey then add it in Vercel → Settings → Environment Variables."
-    });
-  }
+  const symbolMap = {
+    spx:   "^GSPC",
+    brent: "BZ=F",
+    ust5y: "^FVX",
+    dxy:   "DX-Y.NYB",
+  };
 
-  try {
-    // Single batched request — counts as 1 API call against the 800/day quota
-    const symbols = "SPX,BRENT,DXY,US5Y";
-    const url = `https://api.twelvedata.com/price?symbol=${symbols}&apikey=${apiKey}`;
+  const results = {};
+  const errors  = {};
 
-    const response = await fetch(url);
-    const text = await response.text();
+  await Promise.allSettled(
+    Object.entries(symbolMap).map(async ([asset, sym]) => {
+      try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d`;
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; Iran-TMF/1.0)",
+            "Accept": "application/json",
+          },
+        });
 
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      return res.status(502).json({ error: "Twelve Data returned non-JSON: " + text.slice(0, 200) });
-    }
+        if (!response.ok) throw new Error(`Yahoo returned ${response.status} for ${sym}`);
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data?.message || "Twelve Data API error" });
-    }
+        const data  = await response.json();
+        const meta  = data?.chart?.result?.[0]?.meta;
+        if (!meta)  throw new Error(`No meta for ${sym}`);
 
-    // Parse response — Twelve Data returns { SYMBOL: { price: "..." } } for batched requests
-    // or { price: "..." } for single symbol. Handle both.
-    function extractPrice(key) {
-      const entry = data[key];
-      if (!entry) return null;
-      if (entry.status === "error") return null;
-      const p = parseFloat(entry.price);
-      return isNaN(p) ? null : p;
-    }
+        // Prefer regularMarketPrice (real-time during market hours)
+        // Fall back to previousClose if market is closed
+        const price = meta.regularMarketPrice ?? meta.previousClose ?? null;
+        const marketState = meta.marketState ?? "UNKNOWN";
 
-    const spx   = extractPrice("SPX");
-    const brent = extractPrice("BRENT");
-    const dxy   = extractPrice("DXY");
-    const ust5y = extractPrice("US5Y");
+        if (price == null) throw new Error(`No price for ${sym}`);
 
-    // Convert 5Y yield: Twelve Data returns it as a percentage value e.g. 3.512
-    // No conversion needed — matches our baseline format directly
+        // ^FVX returns yield * 10 — divide to get actual % yield
+        results[asset] = asset === "ust5y" ? price / 10 : price;
+        results[`${asset}_marketState`] = marketState;
 
-    const result = {
-      spx,
-      brent,
-      dxy,
-      ust5y,
-      source: "Twelve Data (free tier · 800 calls/day)",
-      fetchedAt: new Date().toISOString(),
-      marketStatus: data.market_status ?? null,
-    };
+      } catch (err) {
+        errors[asset] = err.message;
+      }
+    })
+  );
 
-    // Log what we got for debugging
-    console.log("Prices fetched:", JSON.stringify(result));
+  // Build a readable market status string
+  const states = Object.entries(results)
+    .filter(([k]) => k.endsWith("_marketState"))
+    .map(([k, v]) => `${k.replace("_marketState", "")}:${v}`)
+    .join(", ");
 
-    return res.status(200).json(result);
-
-  } catch (err) {
-    return res.status(500).json({ error: "Price fetch failed: " + err.message });
-  }
+  return res.status(200).json({
+    spx:   results.spx   ?? null,
+    brent: results.brent ?? null,
+    ust5y: results.ust5y ?? null,
+    dxy:   results.dxy   ?? null,
+    marketStates: states,
+    source: "Yahoo Finance (server-side, no auth)",
+    fetchedAt: new Date().toISOString(),
+    errors: Object.keys(errors).length > 0 ? errors : undefined,
+  });
 }

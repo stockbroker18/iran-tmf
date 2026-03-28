@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-// ─── BASELINE PRICES (Feb 28 2026 close) ─────────────────────────────────────
+// ─── ASSET METADATA ─────────────────────────────────────────────────────────────────────────────
+// eventDay = Feb 28 2026 close, kept as historical reference only.
+// All live calculations use livePrices state. eventDay used only as fallback if market closed.
 const BASELINE = {
-  spx:   { value: 6878.88, label: "S&P 500",          fmt: v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-  brent: { value: 72.87,   label: "Brent Crude",       fmt: v => `$${v.toFixed(2)}` },
-  ust5y: { value: 3.512,   label: "5Y Treasury Yield", fmt: v => `${v.toFixed(3)}%` },
-  dxy:   { value: 97.65,   label: "DXY (USD Index)",   fmt: v => v.toFixed(2) },
+  spx:   { label: "S&P 500",           eventDay: 6878.88, fmt: v => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+  brent: { label: "Brent Crude",       eventDay: 72.87,   fmt: v => `$${v.toFixed(2)}` },
+  ust5y: { label: "5Y Treasury Yield", eventDay: 3.512,   fmt: v => `${v.toFixed(3)}%` },
+  dxy:   { label: "DXY (USD Index)",   eventDay: 97.65,   fmt: v => v.toFixed(2) },
 };
 
 // ─── STATIC SCENARIO DEFINITIONS (colors, labels, base scores) ───────────────
@@ -230,7 +232,7 @@ function dirColor(d) {
 
 // ─── MARKET IMPACT CARD ───────────────────────────────────────────────────────
 function MarketImpactCard({ asset, mdata, livePrice }) {
-  const bl = livePrice || BASELINE[asset].value;
+  const bl = livePrice || BASELINE[asset].eventDay;
   const isBps = mdata.isBps;
   const dc = dirColor(mdata.direction);
   const midLevel  = isBps ? bl + mdata.pct_mid  / 100 : bl * (1 + mdata.pct_mid  / 100);
@@ -249,7 +251,7 @@ function MarketImpactCard({ asset, mdata, livePrice }) {
       <div style={{ marginBottom: 8 }}>
         <div style={{ color: dc, fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
           Target: {BASELINE[asset].fmt(midLevel)}
-          <span style={{ color: "#444", fontWeight: 400, marginLeft: 6, fontSize: 10 }}>({BASELINE[asset].fmt(bl)} baseline)</span>
+          <span style={{ color: "#444", fontWeight: 400, marginLeft: 6, fontSize: 10 }}>(from {BASELINE[asset].fmt(bl)})</span>
         </div>
         <div style={{ position: "relative", height: 20, background: "#111", borderRadius: 4, overflow: "hidden", marginBottom: 4 }}>
           <div style={{
@@ -281,20 +283,20 @@ function MarketImpactCard({ asset, mdata, livePrice }) {
 function LivePriceTicker({ prices, loading, lastFetched, onRefresh }) {
   return (
     <div style={{ background: "#060a06", border: "1px solid #0f03", borderRadius: 6, padding: "10px 16px", marginBottom: 12, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-      <span style={{ color: "#0f0", fontSize: 10, letterSpacing: 2, flexShrink: 0 }}>LIVE CFD PRICES</span>
+      <span style={{ color: "#0f0", fontSize: 10, letterSpacing: 2, flexShrink: 0 }}>LIVE PRICES</span>
       {Object.entries(BASELINE).map(([a, b]) => {
         const live = prices[a];
-        const chg  = live ? ((live - b.value) / b.value * 100) : null;
+        const chg  = live ? ((live - b.eventDay) / b.eventDay * 100) : null;
         const isUp = chg > 0;
         return (
           <div key={a} style={{ display: "flex", flexDirection: "column", minWidth: 90 }}>
             <span style={{ color: "#555", fontSize: 9, letterSpacing: 1 }}>{b.label.toUpperCase()}</span>
             <span style={{ color: live ? (isUp ? "#2ecc71" : "#e74c3c") : "#444", fontSize: 12, fontWeight: 700, fontFamily: "monospace" }}>
-              {live ? b.fmt(live) : b.fmt(b.value)}
+              {live ? b.fmt(live) : b.fmt(b.eventDay)}
             </span>
             {chg !== null
-              ? <span style={{ color: isUp ? "#2ecc71" : "#e74c3c", fontSize: 9 }}>{isUp ? "+" : ""}{chg.toFixed(2)}% vs baseline</span>
-              : <span style={{ color: "#333", fontSize: 9 }}>Feb 28 baseline</span>
+              ? <span style={{ color: isUp ? "#2ecc71" : "#e74c3c", fontSize: 9 }}>{isUp ? "+" : ""}{chg.toFixed(2)}% vs Feb 28</span>
+              : <span style={{ color: "#333", fontSize: 9 }}>Feb 28 event-day ref</span>
             }
           </div>
         );
@@ -335,8 +337,11 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
 
   const prices = Object.entries(BASELINE).map(([k, b]) => {
     const live = livePrices[k];
-    const chg  = live ? " (live: " + b.fmt(live) + ", " + ((live - b.value) / b.value * 100).toFixed(1) + "% vs baseline)" : " (market closed)";
-    return b.label + ": baseline " + b.fmt(b.value) + chg;
+    const chgVsEvent = live ? ((live - b.eventDay) / b.eventDay * 100).toFixed(1) : null;
+    if (live) {
+      return b.label + ": CURRENT " + b.fmt(live) + " (+" + chgVsEvent + "% vs Feb 28 event-day " + b.fmt(b.eventDay) + ")";
+    }
+    return b.label + ": market closed - Feb 28 event-day ref: " + b.fmt(b.eventDay);
   }).join("\n");
 
   const indText = activeInds.length > 0
@@ -358,7 +363,7 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "- Today is " + today + " — " + daysSince + " days since the event\n" +
     "- Reason about the CURRENT state of the transition, not the day-1 shock\n" +
     "- Regimes typically consolidate OR collapse within 2-4 weeks — update probabilities accordingly\n\n" +
-    "MARKET PRICES vs Feb 28 baseline:\n" + prices + "\n\n" +
+    "CURRENT MARKET PRICES (scenarios are forward projections from these levels):\n" + prices + "\n\n" +
     "CONFIRMED OSINT INDICATORS (" + activeInds.length + " active):\n" + indText + "\n\n" +
     "MILITARY STATUS:\n" + milText + "\n\n" +
     "ECONOMIC TRIGGERS:\n" + econText + "\n\n" +
@@ -368,7 +373,7 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "1. The JSON below shows STRUCTURE ONLY. All numeric values are zero placeholders — replace every single one with your real analysis.\n" +
     "2. Do NOT anchor to any prior probability set. Derive fresh probabilities from the evidence.\n" +
     "3. After " + daysSince + " days, assign bold probabilities — be willing to put 50-70% on the leading scenario if evidence supports it.\n" +
-    "4. Market impacts should reflect what would happen IF each scenario unfolds FROM CURRENT LIVE PRICES, factoring in what is already priced in.\n" +
+    "4. Market impact estimates are FORWARD PROJECTIONS from the current prices shown above, not from Feb 28. Ask: if this scenario unfolds from here, where do markets go next?\n" +
     "5. analyst_summary must mention specific headlines or signals that drove your assessment.\n\n" +
     'Reply with ONLY valid JSON (no markdown, no text outside JSON):\n' +
     '{"probabilities":{"status_quo":0,"military_junta":0,"reform":0,"collapse":0},' +
@@ -593,7 +598,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.11</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.13</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -723,7 +728,7 @@ export default function App() {
                   { label: "Headlines (1hr)",   value: feedItems.filter(h => h.date && (Date.now() - new Date(h.date).getTime()) < 3600000).length, color: "#3498db" },
                 ].map(b => (
                   <div key={b.label} style={{ background: "#080808", border: "1px solid #1a1a1a", borderRadius: 4, padding: "8px 10px" }}>
-                    <div style={{ color: b.color, fontSize: 18, fontWeight: 700 }}>{b.value}</div>
+                    <div style={{ color: b.color, fontSize: 18, fontWeight: 700 }}>{b.eventDay}</div>
                     <div style={{ color: "#555", fontSize: 9, letterSpacing: 1 }}>{b.label.toUpperCase()}</div>
                   </div>
                 ))}
@@ -804,15 +809,15 @@ export default function App() {
           <div>
             <LivePriceTicker prices={livePrices} loading={priceLoading} lastFetched={priceFetched} onRefresh={fetchPrices} />
             <div style={{ ...card, background: "#05080a", borderColor: "#0f03" }}>
-              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>BASELINE PRICES — FEB 28 2026 CLOSE</div>
+              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>CURRENT LIVE PRICES</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                 {Object.entries(BASELINE).map(([asset, b]) => {
                   const live = livePrices[asset];
-                  const chg  = live ? ((live - b.value) / b.value * 100) : null;
+                  const chg  = live ? ((live - b.eventDay) / b.eventDay * 100) : null;
                   return (
                     <div key={asset} style={{ background: "#080808", border: "1px solid #1a1a1a", borderRadius: 4, padding: "10px 12px" }}>
                       <div style={{ color: "#555", fontSize: 9, letterSpacing: 1, marginBottom: 4 }}>{b.label.toUpperCase()}</div>
-                      <div style={{ color: "#aaa", fontSize: 11 }}>Baseline: <span style={{ color: "#fff", fontFamily: "monospace" }}>{b.fmt(b.value)}</span></div>
+                      <div style={{ color: "#aaa", fontSize: 11 }}>Baseline: <span style={{ color: "#fff", fontFamily: "monospace" }}>{b.fmt(b.eventDay)}</span></div>
                       {live && chg !== null && (
                         <div style={{ color: chg > 0 ? "#2ecc71" : "#e74c3c", fontSize: 11, marginTop: 2 }}>
                           Live: <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{b.fmt(live)}</span>
@@ -866,7 +871,7 @@ export default function App() {
                 const wMid  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_mid  * s.probability / 100), 0);
                 const wLow  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_low  * s.probability / 100), 0);
                 const wHigh = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_high * s.probability / 100), 0);
-                const base  = livePrices[asset] || BASELINE[asset].value;
+                const base  = livePrices[asset] || BASELINE[asset].eventDay;
                 const midLvl= isBps ? base + wMid / 100 : base * (1 + wMid / 100);
                 const dc    = wMid > 1 ? "#2ecc71" : wMid < -1 ? "#e74c3c" : "#f5a623";
                 const midStr= isBps ? `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}bps` : `${wMid > 0 ? "+" : ""}${wMid.toFixed(1)}%`;

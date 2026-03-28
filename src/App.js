@@ -426,54 +426,6 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "All probabilities must sum to 100."
   );
 }
-    return b.label + ": market closed - Feb 28 event-day ref: " + b.fmt(b.eventDay);
-  }).join("\n");
-
-  const indText = activeInds.length > 0
-    ? activeInds.map(i => "[" + i.scenario.toUpperCase() + "] " + i.label + " (weight " + i.weight + ")").join("\n")
-    : "None confirmed — treat all scenarios as live";
-
-  const milText = militaryAlerts.length > 0
-    ? militaryAlerts.map(([u, s]) => u + ": " + s.toUpperCase()).join("\n")
-    : "All units nominal";
-
-  const econText = econActive.length > 0
-    ? econActive.map(t => t.label).join("\n")
-    : "None triggered";
-
-  return (
-    "You are a quantitative geopolitical risk analyst specialising in Middle East political transitions and financial markets.\n\n" +
-    "SITUATION BRIEF:\n" +
-    "- Iranian Supreme Leader Khamenei was killed in US-Israeli strikes on February 28 2026\n" +
-    "- Today is " + today + " — " + daysSince + " days since the event\n" +
-    "- Reason about the CURRENT state of the transition, not the day-1 shock\n" +
-    "- Regimes typically consolidate OR collapse within 2-4 weeks — update probabilities accordingly\n\n" +
-    "CURRENT MARKET PRICES (scenarios are forward projections from these levels):\n" + prices + "\n\n" +
-    "CONFIRMED OSINT INDICATORS (" + activeInds.length + " active):\n" + indText + "\n\n" +
-    "MILITARY STATUS:\n" + milText + "\n\n" +
-    "ECONOMIC TRIGGERS:\n" + econText + "\n\n" +
-    "HEADLINES (last 6h, " + headlineCount + " items):\n" + (recentNews || "None in window — reason from indicators and elapsed time") + "\n\n" +
-    "---\n" +
-    "CRITICAL INSTRUCTIONS:\n" +
-    "1. The JSON below shows STRUCTURE ONLY. All numeric values are zero placeholders — replace every single one with your real analysis.\n" +
-    "2. Do NOT anchor to any prior probability set. Derive fresh probabilities from the evidence.\n" +
-    "3. After " + daysSince + " days, assign bold probabilities — be willing to put 50-70% on the leading scenario if evidence supports it.\n" +
-    "4. Market impact estimates are FORWARD PROJECTIONS from the current prices shown above, not from Feb 28. Ask: if this scenario unfolds from here, where do markets go next?\n" +
-    "5. analyst_summary must mention specific headlines or signals that drove your assessment.\n\n" +
-    'Reply with ONLY valid JSON (no markdown, no text outside JSON):\n' +
-    '{"probabilities":{"status_quo":0,"military_junta":0,"reform":0,"collapse":0},' +
-    '"markets":{"status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}},' +
-    '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}},' +
-    '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}},' +
-    '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}}},' +
-    '"auto_indicators":[],' +
-    '"analyst_summary":"(1) Current dominant scenario and key reason. (2) Specific signals or headlines driving probabilities. (3) What to watch next 24h.",' +
-    '"key_risks":["specific risk 1","specific risk 2","specific risk 3"],' +
-    '"confidence_level":"medium",' +
-    '"last_analysed":"' + now.toISOString() + '"}\n\n' +
-    "All probabilities must sum to exactly 100. Replace every 0 with real values. Do not copy the example numbers."
-  );
-}
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {

@@ -315,39 +315,74 @@ const TABS = ["dashboard", "ai analysis", "markets", "live feed", "indicators", 
 
 // ─── BUILD AI PROMPT ──────────────────────────────────────────────────────────
 function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadlines, livePrices) {
-  const activeInds = ALL_INDICATORS.filter(i => checkedIndicators[i.id]);
+  const activeInds     = ALL_INDICATORS.filter(i => checkedIndicators[i.id]);
   const militaryAlerts = Object.entries(militaryRisk).filter(([, v]) => v !== "nominal");
-  const econActive = ECON_TRIGGERS.filter(t => econTriggers[t.id]);
-  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  const econActive     = ECON_TRIGGERS.filter(t => econTriggers[t.id]);
+
+  // 6-hour window so quiet periods still have context
+  const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
   const recentNews = recentHeadlines
-    .filter(h => h.date && new Date(h.date).getTime() > oneHourAgo)
-    .slice(0, 30)
-    .map(h => `[${h.source?.name || "unknown"}] ${h.title}`)
+    .filter(h => h.date && new Date(h.date).getTime() > sixHoursAgo)
+    .slice(0, 40)
+    .map(h => "[" + (h.source?.name || "unknown") + "] " + h.title)
     .join("\n");
+
+  // Real current date so Groq reasons about elapsed time
+  const now       = new Date();
+  const today     = now.toISOString().slice(0, 10);
+  const daysSince = Math.round((now - new Date("2026-02-28")) / 86400000);
+  const headlineCount = recentNews.split("\n").filter(Boolean).length;
 
   const prices = Object.entries(BASELINE).map(([k, b]) => {
     const live = livePrices[k];
-    return `${b.label}: baseline ${b.fmt(b.value)}${live ? `, current ${b.fmt(live)}` : " (market closed)"}`;
-  }).join("; ");
+    const chg  = live ? " (live: " + b.fmt(live) + ", " + ((live - b.value) / b.value * 100).toFixed(1) + "% vs baseline)" : " (market closed)";
+    return b.label + ": baseline " + b.fmt(b.value) + chg;
+  }).join("\n");
 
-  return `You are a quantitative geopolitical risk analyst. Today is March 1 2026. Iranian Supreme Leader Khamenei was killed Feb 28 2026 in US-Israeli strikes. Analyse the transition scenario.
+  const indText = activeInds.length > 0
+    ? activeInds.map(i => "[" + i.scenario.toUpperCase() + "] " + i.label + " (weight " + i.weight + ")").join("\n")
+    : "None confirmed — treat all scenarios as live";
 
-PRICES (Feb 28 baseline): ${prices}
+  const milText = militaryAlerts.length > 0
+    ? militaryAlerts.map(([u, s]) => u + ": " + s.toUpperCase()).join("\n")
+    : "All units nominal";
 
-CONFIRMED INDICATORS (${activeInds.length}): ${activeInds.length > 0 ? activeInds.map(i => `${i.id}:${i.label}`).join("; ") : "none"}
+  const econText = econActive.length > 0
+    ? econActive.map(t => t.label).join("\n")
+    : "None triggered";
 
-MILITARY: ${militaryAlerts.length > 0 ? militaryAlerts.map(([u,s]) => `${u}=${s}`).join("; ") : "all nominal"}
-
-ECONOMIC TRIGGERS: ${econActive.length > 0 ? econActive.map(t => t.label).join("; ") : "none"}
-
-HEADLINES (last 60min):
-${recentNews || "none loaded"}
-
----
-Reply with ONLY valid JSON, no markdown, no commentary. Use this exact structure:
-{"probabilities":{"status_quo":25,"military_junta":35,"reform":20,"collapse":20},"markets":{"status_quo":{"spx":{"pct_mid":-0.5,"pct_low":-1.5,"pct_high":0.5,"direction":"neutral","timeframe":5,"rationale":"brief reason","ci_label":"-1.5% to +0.5%","isBps":false},"brent":{"pct_mid":4,"pct_low":2,"pct_high":8,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+2% to +8%","isBps":false},"ust5y":{"pct_mid":3,"pct_low":-5,"pct_high":8,"direction":"neutral","timeframe":5,"rationale":"brief reason","ci_label":"-5bps to +8bps","isBps":true},"dxy":{"pct_mid":0.4,"pct_low":0.1,"pct_high":0.9,"direction":"up","timeframe":5,"rationale":"brief reason","ci_label":"+0.1% to +0.9%","isBps":false}},"military_junta":{"spx":{"pct_mid":-4,"pct_low":-6.5,"pct_high":-2.5,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-2.5% to -6.5%","isBps":false},"brent":{"pct_mid":12,"pct_low":8,"pct_high":18,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+8% to +18%","isBps":false},"ust5y":{"pct_mid":-20,"pct_low":-28,"pct_high":-12,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-12bps to -28bps","isBps":true},"dxy":{"pct_mid":2.2,"pct_low":1.2,"pct_high":3.5,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+1.2% to +3.5%","isBps":false}},"reform":{"spx":{"pct_mid":2,"pct_low":0.8,"pct_high":3.5,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+0.8% to +3.5%","isBps":false},"brent":{"pct_mid":-7,"pct_low":-11,"pct_high":-4,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-4% to -11%","isBps":false},"ust5y":{"pct_mid":10,"pct_low":5,"pct_high":18,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+5bps to +18bps","isBps":true},"dxy":{"pct_mid":-1.1,"pct_low":-1.8,"pct_high":-0.5,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-0.5% to -1.8%","isBps":false}},"collapse":{"spx":{"pct_mid":2,"pct_low":-4,"pct_high":6,"direction":"mixed","timeframe":7,"rationale":"brief reason","ci_label":"-4% to +6%","isBps":false},"brent":{"pct_mid":-8,"pct_low":-15,"pct_high":-3,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-3% to -15%","isBps":false},"ust5y":{"pct_mid":12,"pct_low":5,"pct_high":22,"direction":"up","timeframe":7,"rationale":"brief reason","ci_label":"+5bps to +22bps","isBps":true},"dxy":{"pct_mid":-1.6,"pct_low":-2.8,"pct_high":-0.5,"direction":"down","timeframe":7,"rationale":"brief reason","ci_label":"-0.5% to -2.8%","isBps":false}}},"auto_indicators":[],"analyst_summary":"2-3 sentences on current situation and what is driving probabilities.","key_risks":["risk 1","risk 2","risk 3"],"confidence_level":"medium","last_analysed":"${new Date().toISOString()}"}
-
-Replace ALL values with your actual analysis. probabilities must sum to 100. rationale strings should be specific to current signals. Keep rationale under 20 words each. analyst_summary 2-3 sentences max.`;
+  return (
+    "You are a quantitative geopolitical risk analyst specialising in Middle East political transitions and financial markets.\n\n" +
+    "SITUATION BRIEF:\n" +
+    "- Iranian Supreme Leader Khamenei was killed in US-Israeli strikes on February 28 2026\n" +
+    "- Today is " + today + " — " + daysSince + " days since the event\n" +
+    "- Reason about the CURRENT state of the transition, not the day-1 shock\n" +
+    "- Regimes typically consolidate OR collapse within 2-4 weeks — update probabilities accordingly\n\n" +
+    "MARKET PRICES vs Feb 28 baseline:\n" + prices + "\n\n" +
+    "CONFIRMED OSINT INDICATORS (" + activeInds.length + " active):\n" + indText + "\n\n" +
+    "MILITARY STATUS:\n" + milText + "\n\n" +
+    "ECONOMIC TRIGGERS:\n" + econText + "\n\n" +
+    "HEADLINES (last 6h, " + headlineCount + " items):\n" + (recentNews || "None in window — reason from indicators and elapsed time") + "\n\n" +
+    "---\n" +
+    "CRITICAL INSTRUCTIONS:\n" +
+    "1. The JSON below shows STRUCTURE ONLY. All numeric values are zero placeholders — replace every single one with your real analysis.\n" +
+    "2. Do NOT anchor to any prior probability set. Derive fresh probabilities from the evidence.\n" +
+    "3. After " + daysSince + " days, assign bold probabilities — be willing to put 50-70% on the leading scenario if evidence supports it.\n" +
+    "4. Market impacts should reflect what would happen IF each scenario unfolds FROM CURRENT LIVE PRICES, factoring in what is already priced in.\n" +
+    "5. analyst_summary must mention specific headlines or signals that drove your assessment.\n\n" +
+    'Reply with ONLY valid JSON (no markdown, no text outside JSON):\n' +
+    '{"probabilities":{"status_quo":0,"military_junta":0,"reform":0,"collapse":0},' +
+    '"markets":{"status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","timeframe":5,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}},' +
+    '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}},' +
+    '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}},' +
+    '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","timeframe":7,"rationale":"specific reasoning here","ci_label":"xbps to ybps","isBps":true},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","timeframe":7,"rationale":"specific reasoning here","ci_label":"x% to y%","isBps":false}}},' +
+    '"auto_indicators":[],' +
+    '"analyst_summary":"(1) Current dominant scenario and key reason. (2) Specific signals or headlines driving probabilities. (3) What to watch next 24h.",' +
+    '"key_risks":["specific risk 1","specific risk 2","specific risk 3"],' +
+    '"confidence_level":"medium",' +
+    '"last_analysed":"' + now.toISOString() + '"}\n\n' +
+    "All probabilities must sum to exactly 100. Replace every 0 with real values. Do not copy the example numbers."
+  );
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
@@ -369,7 +404,7 @@ export default function App() {
   const [priceFetched,   setPriceFetched]   = useState(null);
 
   // AI analysis state
-  const [aiAnalysis,     setAiAnalysis]     = useLocalStorage("iran_tmd_v15_ai",          null);
+  const [aiAnalysis,     setAiAnalysis]     = useState(null); // session only — fresh analysis on each visit
   const [aiLoading,      setAiLoading]      = useState(false);
   const [aiError,        setAiError]        = useState(null);
   const [aiTriggerCount, setAiTriggerCount] = useState(0);
@@ -558,7 +593,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.10</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.11</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>

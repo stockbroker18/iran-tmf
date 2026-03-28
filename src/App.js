@@ -364,7 +364,7 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "SOURCE 1 — EXPERT ANALYST CONSENSUS (weighted by track record):\n" +
     "  HIGH WEIGHT: CSIS (Seth Jones, Mona Yacoubian, Jon Alterman) — embedded sourcing, track record on Iran\n" +
     "  HIGH WEIGHT: Anthony Cordesman (CSIS) — 40yr ME military analysis record\n" +
-    "  MED WEIGHT: Brookings (O\'Hanlon, Gordon) — sound on US strategy, less on internal Iran dynamics\n" +
+    "  MED WEIGHT: Brookings (OHanlon, Gordon) — sound on US strategy, less on internal Iran dynamics\n" +
     "  MED WEIGHT: Behnam Ben Taleblu (FDD) — strong on IRGC structure, hawkish bias\n" +
     "  LOW WEIGHT: CNN/PBS talking heads — useful for US political framing, not Iran internal\n" +
     "  CONSENSUS VIEW: StatusQuo/IRGC-junta = ~55-65%, Reform/ceasefire = 20-30%, Collapse = 10-15%\n" +

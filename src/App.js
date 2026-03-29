@@ -678,9 +678,9 @@ export default function App() {
         '{"calibrated_at":"' + today + '","status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""}},' +
         '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""}},' +
         '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}},' +
-        '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}}}' +
+        '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}}}' 
 
-"All zeros are placeholders — replace with calibrated values from current prices.";
+All zeros are placeholders — replace with calibrated values from current prices.;
 
       const response = await fetch("/api/analyze", {
         method: "POST",

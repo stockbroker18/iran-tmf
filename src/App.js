@@ -397,27 +397,27 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "PRICES: " + prices + "\n" +
     "SIGNALS: " + signals + "\n" +
 
-    "=== THREE-SOURCE SYNTHESIS (Bridgewater method) ===\n" +
-    "SOURCE 1  -  EXPERT ANALYST CONSENSUS (weighted by track record):\n" +
-    "  HIGH WEIGHT: CSIS (Seth Jones, Mona Yacoubian, Jon Alterman)  -  embedded sourcing, track record on Iran\n" +
-    "  HIGH WEIGHT: Anthony Cordesman (CSIS)  -  40yr ME military analysis record\n" +
-    "  MED WEIGHT: Brookings (O'Hanlon, Gordon)  -  sound on US strategy, less on internal Iran dynamics\n" +
-    "  MED WEIGHT: Behnam Ben Taleblu (FDD)  -  strong on IRGC structure, hawkish bias\n" +
-    "  LOW WEIGHT: CNN/PBS talking heads  -  useful for US political framing, not Iran internal\n" +
-    "  CONSENSUS VIEW: StatusQuo/IRGC-junta = ~55-65%, Reform/ceasefire = 20-30%, Collapse = 10-15%\n" +
-    "SOURCE 2  -  POLYMARKET CALIBRATION ANCHORS (specific binary questions, not scenario probabilities):\n" +
+    "=== THREE-SOURCE PROBABILITY SYNTHESIS ===\n" +
+    "EXPERT PRIORS (CSIS/Brookings/FDD - high credibility, use as starting point):\n" +
+    "  STATUS_QUO (IRGC hardline continuity, war ongoing): ~40-45%\n" +
+    "  MILITARY_JUNTA (deeper IRGC lock, Houthis activate, Hormuz fully closed): ~15-20%\n" +
+    "  REFORM (ceasefire, Apr6 deal, Hormuz reopens): ~20-30%\n" +
+    "  COLLAPSE (defections, regime falls): ~10-15%\n" +
+    "POLYMARKET CROWD ANCHORS (financially-backed, $50M+ volume):\n" +
     "  " + polyText + "\n" +
-    "  Use these as CONSTRAINTS: e.g. if crowd gives 21% to regime fall by Jun 30, your Collapse scenario\n" +
-    "  probability should be in a similar ballpark unless you have strong contrary signals.\n" +
-    "  Note: insider trading documented on these markets  -  treat as informed signal, not pure crowd.\n" +
-    "SOURCE 3  -  LIVE OSINT SIGNALS (from dashboard above)\n\n" +
+    "LIVE SIGNALS (from dashboard - override priors if strong):\n" +
+    "  Active indicators: " + signals + "\n" +
+    "  Headlines: " + headlineCount + " items in last 6h\n\n" +
 
-    "SYNTHESIS INSTRUCTIONS:\n" +
-    "1. Start with expert consensus as your prior (highest weight  -  these analysts have Iran-specific sourcing)\n" +
-    "2. Update with Polymarket crowd odds  -  especially where crowd DEVIATES from experts by >10pp (this is signal)\n" +
-    "3. Further update with live OSINT signals and headlines\n" +
-    "4. Show your work: if you deviate from expert consensus, briefly state why in analyst_summary\n" +
-    "5. Probabilities should reflect ALL THREE sources blended, not just one\n\n" +
+    "INSTRUCTIONS:\n" +
+    "1. Use expert priors above as your STARTING POINT for each scenario separately.\n" +
+    "2. Adjust each scenario up/down based on Polymarket crowd odds and live signals.\n" +
+    "3. IMPORTANT: Do NOT just return the prior numbers. The live headlines and signals\n" +
+    "   should meaningfully shift your estimates - even small shifts of 3-5pp are better than returning exact priors.\n" +
+    "4. If headlines suggest ceasefire progress, shift REFORM up and STATUS_QUO down.\n" +
+    "5. If headlines suggest escalation, shift MILITARY_JUNTA up and REFORM down.\n" +
+    "6. Probabilities must sum to 100. All four must be non-zero.\n" +
+    "7. analyst_summary must explain specifically what shifted your estimates from the priors.\n\n" +
 
     "HEADLINES:\n" + (headlines || "none") + "\n\n" +
     "Output JSON only. Probabilities sum=100. Forward projections from current prices. " +
@@ -559,8 +559,7 @@ export default function App() {
     setLastFetch(new Date());
     setFeedLoading(false);
     if (deduped.length === 0) setFeedError("No feed data returned. CORS proxy may be temporarily unavailable.");
-    // Trigger AI analysis after every feed refresh (covers launch + 5-min cycle)
-    setTimeout(() => { if (runAiRef.current) runAiRef.current(); }, 500);
+
   }, []);
 
   // Fetch feeds on launch and every 5 minutes regardless of active tab
@@ -625,7 +624,7 @@ export default function App() {
     setAiLoading(false);
   }, [setChecked, setLastUpdate, setAiAnalysis]);
 
-  // Auto-trigger AI on first feed load
+
   // ── Daily market calibration ─────────────────────────────────────────────
   const runCalibration = useCallback(async (prices, force = false) => {
     // Only run once per calendar day (stored in localStorage)
@@ -736,25 +735,27 @@ export default function App() {
   }, [livePrices, runCalibration]);
 
 
-  // ── Keep a stable ref to latest runAiAnalysis so fetchFeeds can call it without deps issues
+
+  // ── AI trigger: 60-minute interval only, throttle enforced via localStorage ────────
+  // runAiRef holds a stable reference so the interval closure always has fresh state
   const runAiRef = useRef(null);
-  useEffect(() => { runAiRef.current = () => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData); },
-    [feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, runAiAnalysis]);
-
-  // Auto-trigger AI every 5 minutes via stable interval
   useEffect(() => {
-    const id = setInterval(() => { if (runAiRef.current && !aiLoading) runAiRef.current(); }, 60 * 60 * 1000);
+    runAiRef.current = () => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, false);
+  }, [feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, runAiAnalysis]);
+
+  // Single 60-min interval — throttle inside runAiAnalysis prevents duplicate calls
+  useEffect(() => {
+    // Also fire once on mount (throttle will skip if run recently)
+    if (runAiRef.current) runAiRef.current();
+    const id = setInterval(() => { if (runAiRef.current) runAiRef.current(); }, 60 * 60 * 1000);
     return () => clearInterval(id);
-  }, [aiLoading]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-trigger when new flagged signals appear between cycles
+  // Track flagged count for badge display only — no longer auto-triggers AI
   useEffect(() => {
-    const flagged = feedItems.filter(i => i.classification).length;
-    if (flagged > prevFlaggedCount.current && feedItems.length > 0 && !aiLoading) {
-      prevFlaggedCount.current = flagged;
-      if (runAiRef.current) runAiRef.current();
-    }
-  }, [feedItems, aiLoading]);
+    prevFlaggedCount.current = feedItems.filter(i => i.classification).length;
+  }, [feedItems]);
+
 
   // ── Compute probabilities (AI overrides static weights if available) ──────
   const aiProbs    = aiAnalysis?.probabilities || null;

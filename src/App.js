@@ -398,23 +398,23 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "SIGNALS: " + signals + "\n" +
 
     "=== THREE-SOURCE SYNTHESIS (Bridgewater method) ===\n" +
-    "SOURCE 1 — EXPERT ANALYST CONSENSUS (weighted by track record):\n" +
-    "  HIGH WEIGHT: CSIS (Seth Jones, Mona Yacoubian, Jon Alterman) — embedded sourcing, track record on Iran\n" +
-    "  HIGH WEIGHT: Anthony Cordesman (CSIS) — 40yr ME military analysis record\n" +
-    "  MED WEIGHT: Brookings (O'Hanlon, Gordon) — sound on US strategy, less on internal Iran dynamics\n" +
-    "  MED WEIGHT: Behnam Ben Taleblu (FDD) — strong on IRGC structure, hawkish bias\n" +
-    "  LOW WEIGHT: CNN/PBS talking heads — useful for US political framing, not Iran internal\n" +
+    "SOURCE 1  -  EXPERT ANALYST CONSENSUS (weighted by track record):\n" +
+    "  HIGH WEIGHT: CSIS (Seth Jones, Mona Yacoubian, Jon Alterman)  -  embedded sourcing, track record on Iran\n" +
+    "  HIGH WEIGHT: Anthony Cordesman (CSIS)  -  40yr ME military analysis record\n" +
+    "  MED WEIGHT: Brookings (O'Hanlon, Gordon)  -  sound on US strategy, less on internal Iran dynamics\n" +
+    "  MED WEIGHT: Behnam Ben Taleblu (FDD)  -  strong on IRGC structure, hawkish bias\n" +
+    "  LOW WEIGHT: CNN/PBS talking heads  -  useful for US political framing, not Iran internal\n" +
     "  CONSENSUS VIEW: StatusQuo/IRGC-junta = ~55-65%, Reform/ceasefire = 20-30%, Collapse = 10-15%\n" +
-    "SOURCE 2 — POLYMARKET CALIBRATION ANCHORS (specific binary questions, not scenario probabilities):\n" +
+    "SOURCE 2  -  POLYMARKET CALIBRATION ANCHORS (specific binary questions, not scenario probabilities):\n" +
     "  " + polyText + "\n" +
     "  Use these as CONSTRAINTS: e.g. if crowd gives 21% to regime fall by Jun 30, your Collapse scenario\n" +
     "  probability should be in a similar ballpark unless you have strong contrary signals.\n" +
-    "  Note: insider trading documented on these markets — treat as informed signal, not pure crowd.\n" +
-    "SOURCE 3 — LIVE OSINT SIGNALS (from dashboard above)\n\n" +
+    "  Note: insider trading documented on these markets  -  treat as informed signal, not pure crowd.\n" +
+    "SOURCE 3  -  LIVE OSINT SIGNALS (from dashboard above)\n\n" +
 
     "SYNTHESIS INSTRUCTIONS:\n" +
-    "1. Start with expert consensus as your prior (highest weight — these analysts have Iran-specific sourcing)\n" +
-    "2. Update with Polymarket crowd odds — especially where crowd DEVIATES from experts by >10pp (this is signal)\n" +
+    "1. Start with expert consensus as your prior (highest weight  -  these analysts have Iran-specific sourcing)\n" +
+    "2. Update with Polymarket crowd odds  -  especially where crowd DEVIATES from experts by >10pp (this is signal)\n" +
     "3. Further update with live OSINT signals and headlines\n" +
     "4. Show your work: if you deviate from expert consensus, briefly state why in analyst_summary\n" +
     "5. Probabilities should reflect ALL THREE sources blended, not just one\n\n" +
@@ -655,7 +655,7 @@ export default function App() {
       const prompt =
         "You are a quantitative market strategist calibrating scenario impact estimates for an Iran war risk dashboard.
 " +
-        "Today: " + today + ". This is an active conflict — US-Israeli strikes killed Khamenei Feb 28 2026.
+        "Today: " + today + ". This is an active conflict - US-Israeli strikes killed Khamenei Feb 28 2026.
 
 " +
         "CURRENT LIVE PRICES (use these as the starting point for all projections):
@@ -684,7 +684,7 @@ export default function App() {
 " +
         "For each of the 4 scenarios below, estimate the 7-day % move FROM CURRENT PRICES.
 " +
-        "Note: most war shock is already priced — estimate the MARGINAL move from here.
+        "Note: most war shock is already priced - estimate the MARGINAL move from here.
 " +
         "ust5y values are basis points (bps), all others are percentages.
 
@@ -708,7 +708,7 @@ export default function App() {
         '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}}}' +
         "
 
-All zeros are placeholders — replace with calibrated values from current prices.";
+All zeros are placeholders - replace with calibrated values from current prices.";
 
       const response = await fetch("/api/analyze", {
         method: "POST",

@@ -636,7 +636,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.18</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.19</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -673,7 +673,6 @@ export default function App() {
         {/* ══ DASHBOARD ══ */}
         {activeTab === "dashboard" && (
           <div>
-            <LivePriceTicker prices={livePrices} loading={priceLoading} lastFetched={priceFetched} onRefresh={fetchPrices} />
 
             {/* AI status strip */}
             <div style={{ ...card, background: aiAnalysis ? "#050a05" : "#080808", borderColor: aiAnalysis ? "#0f03" : "#1a1a1a", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -753,6 +752,101 @@ export default function App() {
                 {SCENARIOS.map(s => <ProbabilityRing key={s.id} value={s.probability} color={s.color} label={s.label} aiOverride={!!aiProbs} />)}
               </div>
             </div>
+
+            {/* ── LIVE PRICES + TRADING OUTLOOK ── */}
+            <div style={{ background: "#03080a", border: "2px solid #0f0", borderRadius: 8, padding: 18, marginBottom: 14, boxShadow: "0 0 24px #0f010" }}>
+
+              {/* Header row */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ color: "#0f0", fontSize: 12, letterSpacing: 3, fontWeight: 700 }}>◈ LIVE PRICES · PROBABILITY-WEIGHTED OUTLOOK</div>
+                  <div style={{ color: "#0f05", fontSize: 9, marginTop: 2 }}>
+                    Current levels · 7-day forward projections blended across scenarios · {aiProbs ? "Groq-reasoned" : "static weights"}
+                  </div>
+                </div>
+                <button onClick={fetchPrices} disabled={priceLoading}
+                  style={{ background: "transparent", border: "1px solid #0f04", color: "#0f0", padding: "3px 8px", borderRadius: 3, fontSize: 9, cursor: "pointer", fontFamily: "monospace" }}>
+                  {priceLoading ? "FETCHING..." : "↻ PRICES"}
+                </button>
+              </div>
+
+              {/* Asset grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+                {Object.keys(BASELINE).map(asset => {
+                  const b      = BASELINE[asset];
+                  const live   = livePrices[asset];
+                  const isBps  = DEFAULT_MARKETS.status_quo[asset].isBps;
+                  const chg    = live ? ((live - b.eventDay) / b.eventDay * 100) : null;
+                  const isUp   = chg > 0;
+                  // Probability-weighted move
+                  const wMid   = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_mid  * s.probability / 100), 0);
+                  const wLow   = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_low  * s.probability / 100), 0);
+                  const wHigh  = SCENARIOS.reduce((sum, s) => sum + (s.markets[asset].pct_high * s.probability / 100), 0);
+                  const base   = live || b.eventDay;
+                  const target = isBps ? base + wMid / 100 : base * (1 + wMid / 100);
+                  const tLow   = isBps ? base + wLow  / 100 : base * (1 + wLow  / 100);
+                  const tHigh  = isBps ? base + wHigh / 100 : base * (1 + wHigh / 100);
+                  const dc     = wMid > 1 ? "#2ecc71" : wMid < -1 ? "#e74c3c" : "#f5a623";
+                  const arrow  = wMid > 1 ? "▲" : wMid < -1 ? "▼" : "►";
+                  const moveStr = isBps
+                    ? (wMid > 0 ? "+" : "") + wMid.toFixed(1) + "bps"
+                    : (wMid > 0 ? "+" : "") + wMid.toFixed(1) + "%";
+                  const conviction = Math.abs(wMid) > 3 ? "HIGH" : Math.abs(wMid) > 1 ? "MOD" : "LOW";
+                  const convColor  = conviction === "HIGH" ? "#e74c3c" : conviction === "MOD" ? "#f5a623" : "#555";
+
+                  return (
+                    <div key={asset} style={{ background: "#050d10", border: `1px solid ${dc}33`, borderRadius: 6, padding: 12 }}>
+                      {/* Asset label + conviction */}
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                        <span style={{ color: "#666", fontSize: 9, letterSpacing: 1 }}>{b.label.toUpperCase()}</span>
+                        <span style={{ color: convColor, fontSize: 8, border: `1px solid ${convColor}44`, padding: "1px 4px", borderRadius: 2 }}>{conviction}</span>
+                      </div>
+
+                      {/* Current live price */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ color: live ? (isUp ? "#2ecc71" : "#e74c3c") : "#555", fontSize: 20, fontWeight: 700, fontFamily: "monospace", lineHeight: 1 }}>
+                          {live ? b.fmt(live) : b.fmt(b.eventDay)}
+                        </div>
+                        {chg !== null
+                          ? <div style={{ color: isUp ? "#2ecc71" : "#e74c3c", fontSize: 9, marginTop: 2 }}>
+                              {isUp ? "+" : ""}{chg.toFixed(2)}% vs Feb 28
+                            </div>
+                          : <div style={{ color: "#333", fontSize: 9, marginTop: 2 }}>market closed · Feb 28 ref</div>
+                        }
+                      </div>
+
+                      {/* Divider */}
+                      <div style={{ borderTop: "1px solid #1a2a1a", marginBottom: 8 }} />
+
+                      {/* Weighted outlook */}
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+                        <span style={{ color: dc, fontSize: 9 }}>{arrow}</span>
+                        <span style={{ color: dc, fontSize: 18, fontWeight: 700, fontFamily: "monospace", lineHeight: 1 }}>{moveStr}</span>
+                        <span style={{ color: dc, fontSize: 10, marginLeft: 2 }}>{b.fmt(target)}</span>
+                      </div>
+                      <div style={{ background: "#0a0a0a", borderRadius: 3, height: 5, marginBottom: 5, position: "relative", overflow: "hidden" }}>
+                        <div style={{
+                          position: "absolute", height: "100%", background: `${dc}55`, borderRadius: 3,
+                          left: "50%", width: Math.min(80, Math.abs(wMid) * 6) + "%",
+                          transform: wMid >= 0 ? "translateX(0)" : "translateX(-100%)",
+                        }} />
+                        <div style={{ position: "absolute", left: "50%", width: 1, height: "100%", background: "#333" }} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "#333" }}>
+                        <span>{b.fmt(Math.min(tLow, tHigh))}</span>
+                        <span>90% CI</span>
+                        <span>{b.fmt(Math.max(tLow, tHigh))}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ color: "#1a2a1a", fontSize: 9, marginTop: 10, textAlign: "right" }}>
+                {priceFetched ? `prices fetched ${priceFetched.toLocaleTimeString()}` : "awaiting price data"} · for analytical purposes only
+              </div>
+            </div>
+
 
             {aiAnalysis?.analyst_summary && (
               <div style={{ ...card, borderColor: "#0f03", background: "#050a05" }}>

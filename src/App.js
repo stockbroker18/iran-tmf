@@ -516,13 +516,6 @@ export default function App() {
 
   useEffect(() => { fetchPrices(); }, [fetchPrices]);
 
-  // Run calibration once per day, after prices are available
-  useEffect(() => {
-    if (Object.keys(livePrices).length > 0) {
-      runCalibration(livePrices);
-    }
-  }, [livePrices, runCalibration]);
-
   // ── Polymarket odds fetch ─────────────────────────────────────────────────
   const fetchPolymarket = useCallback(async () => {
     setPolyLoading(true);
@@ -734,6 +727,14 @@ export default function App() {
     }
     setCalibLoading(false);
   }, []);
+
+  // Run calibration once per day, after prices are available
+  useEffect(() => {
+    if (Object.keys(livePrices).length > 0) {
+      runCalibration(livePrices);
+    }
+  }, [livePrices, runCalibration]);
+
 
   // ── Keep a stable ref to latest runAiAnalysis so fetchFeeds can call it without deps issues
   const runAiRef = useRef(null);

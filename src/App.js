@@ -364,13 +364,15 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
     "SOURCE 1 — EXPERT ANALYST CONSENSUS (weighted by track record):\n" +
     "  HIGH WEIGHT: CSIS (Seth Jones, Mona Yacoubian, Jon Alterman) — embedded sourcing, track record on Iran\n" +
     "  HIGH WEIGHT: Anthony Cordesman (CSIS) — 40yr ME military analysis record\n" +
-    "  MED WEIGHT: Brookings (OHanlon, Gordon) — sound on US strategy, less on internal Iran dynamics\n" +
+    "  MED WEIGHT: Brookings (O\'Hanlon, Gordon) — sound on US strategy, less on internal Iran dynamics\n" +
     "  MED WEIGHT: Behnam Ben Taleblu (FDD) — strong on IRGC structure, hawkish bias\n" +
     "  LOW WEIGHT: CNN/PBS talking heads — useful for US political framing, not Iran internal\n" +
     "  CONSENSUS VIEW: StatusQuo/IRGC-junta = ~55-65%, Reform/ceasefire = 20-30%, Collapse = 10-15%\n" +
-    "SOURCE 2 — POLYMARKET CROWD ODDS (financially-backed, ~$50M+ volume on Iran markets):\n" +
+    "SOURCE 2 — POLYMARKET CALIBRATION ANCHORS (specific binary questions, not scenario probabilities):\n" +
     "  " + polyText + "\n" +
-    "  NOTE: Polymarket has shown insider trading patterns on Iran — treat as informed but potentially noisy\n" +
+    "  Use these as CONSTRAINTS: e.g. if crowd gives 21% to regime fall by Jun 30, your Collapse scenario\n" +
+    "  probability should be in a similar ballpark unless you have strong contrary signals.\n" +
+    "  Note: insider trading documented on these markets — treat as informed signal, not pure crowd.\n" +
     "SOURCE 3 — LIVE OSINT SIGNALS (from dashboard above)\n\n" +
 
     "SYNTHESIS INSTRUCTIONS:\n" +
@@ -691,44 +693,54 @@ export default function App() {
               </button>
             </div>
 
-            {/* ── POLYMARKET CROWD ODDS ── */}
+            {/* ── POLYMARKET INTELLIGENCE ── */}
             <div style={{ background: "#080510", border: "1px solid #6633ff44", borderRadius: 6, padding: 14, marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
                 <div>
-                  <span style={{ color: "#9966ff", fontSize: 11, letterSpacing: 2, fontWeight: 700 }}>◈ POLYMARKET CROWD ODDS</span>
-                  <span style={{ color: "#6633ff66", fontSize: 9, marginLeft: 8 }}>financially-backed · {polyData ? new Date(polyData.fetchedAt).toLocaleTimeString() : "loading..."}</span>
+                  <span style={{ color: "#9966ff", fontSize: 11, letterSpacing: 2, fontWeight: 700 }}>◈ POLYMARKET INTELLIGENCE</span>
+                  <span style={{ color: "#6633ff55", fontSize: 9, marginLeft: 8 }}>crowd calibration · {polyData ? new Date(polyData.fetchedAt).toLocaleTimeString() : "loading..."}</span>
                 </div>
                 <button onClick={fetchPolymarket} disabled={polyLoading}
                   style={{ background: "transparent", border: "1px solid #6633ff44", color: "#9966ff", padding: "3px 8px", borderRadius: 3, fontSize: 9, cursor: "pointer", fontFamily: "monospace" }}>
-                  {polyLoading ? "FETCHING..." : "REFRESH"}
+                  {polyLoading ? "..." : "REFRESH"}
                 </button>
               </div>
+              <div style={{ color: "#444", fontSize: 9, marginBottom: 10, lineHeight: 1.5 }}>
+                Specific dated binary questions — not directly comparable to scenario probabilities. Fed to Groq as calibration anchors: crowd odds constrain plausible scenario ranges.
+              </div>
               {polyData?.markets && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8 }}>
                   {Object.values(polyData.markets).filter(m => m.probability != null).map(m => {
-                    const sc = SCENARIO_DEFS.find(s => s.id === m.scenario);
-                    const isHighDivergence = aiAnalysis?.probabilities && Math.abs((aiAnalysis.probabilities[m.scenario] || 0) - m.probability) > 15;
+                    const impliedScenario = SCENARIO_DEFS.find(s => s.id === m.scenario);
+                    const groqProb = aiAnalysis?.probabilities?.[m.scenario];
+                    const divergeMag = groqProb != null ? Math.abs(m.probability - groqProb) : null;
+                    const divergeDir = groqProb != null ? (m.probability > groqProb ? "crowd implies higher" : "Groq implies higher") : null;
                     return (
-                      <div key={m.label} style={{ background: "#0a0814", border: `1px solid ${sc?.color || "#333"}33`, borderRadius: 4, padding: "8px 10px" }}>
-                        <div style={{ color: "#666", fontSize: 9, letterSpacing: 1, marginBottom: 4 }}>{m.label.toUpperCase()}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ color: sc?.color || "#9966ff", fontSize: 20, fontWeight: 700, fontFamily: "monospace" }}>{m.probability}%</span>
-                          {isHighDivergence && (
-                            <span style={{ color: "#f5a623", fontSize: 9, border: "1px solid #f5a62344", padding: "1px 4px", borderRadius: 2 }}>
-                              ⚡ {Math.abs((aiAnalysis.probabilities[m.scenario] || 0) - m.probability)}pp divergence
-                            </span>
-                          )}
+                      <div key={m.label} style={{ background: "#06040f", border: "1px solid #6633ff22", borderRadius: 4, padding: "10px 12px" }}>
+                        <div style={{ color: "#9966ff", fontSize: 10, fontWeight: 700, marginBottom: 4 }}>{m.label}</div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
+                          <span style={{ color: "#fff", fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>{m.probability}%</span>
+                          <span style={{ color: "#444", fontSize: 9 }}>crowd YES</span>
+                          {m.volume && <span style={{ color: "#2a2a2a", fontSize: 9, marginLeft: "auto" }}>${m.volume}</span>}
                         </div>
-                        {m.volume && <div style={{ color: "#444", fontSize: 9, marginTop: 2 }}>${m.volume} traded</div>}
+                        <div style={{ fontSize: 9, color: "#444", marginBottom: 4 }}>
+                          Relates to: <span style={{ color: impliedScenario?.color }}>{impliedScenario?.label}</span>
+                        </div>
+                        <div style={{ fontSize: 9, color: "#333", fontStyle: "italic", lineHeight: 1.4 }}>{m.signal}</div>
+                        {divergeMag != null && divergeMag > 10 && (
+                          <div style={{ marginTop: 8, background: "#f5a62310", border: "1px solid #f5a62333", borderRadius: 3, padding: "4px 6px", fontSize: 9, color: "#f5a623" }}>
+                            ⚡ {divergeDir} than Groq by {divergeMag}pp — notable divergence
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
-              {!polyData && !polyLoading && <div style={{ color: "#444", fontSize: 10 }}>Polymarket data unavailable — will retry on next refresh</div>}
-              {polyLoading && <div style={{ color: "#9966ff66", fontSize: 10 }}>Fetching crowd odds...</div>}
-              <div style={{ color: "#333", fontSize: 9, marginTop: 8 }}>
-                Source: Polymarket Gamma API · Note: insider trading patterns have been observed on Iran markets — treat as informed signal, not gospel
+              {!polyData && !polyLoading && <div style={{ color: "#333", fontSize: 10 }}>Unavailable — will retry on next refresh</div>}
+              {polyLoading && <div style={{ color: "#6633ff44", fontSize: 10 }}>Fetching...</div>}
+              <div style={{ color: "#1a1a1a", fontSize: 9, marginTop: 8 }}>
+                ⚠ Insider trading documented on these markets — treat as informed but not pure crowd signal
               </div>
             </div>
 

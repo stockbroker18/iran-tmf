@@ -19,32 +19,64 @@ const SCENARIO_DEFS = [
 ];
 
 // ─── DEFAULT MARKET DATA (used until AI overrides) ───────────────────────────
+// ─── DEFAULT MARKET IMPACTS ──────────────────────────────────────────────────
+// Calibrated March 28 2026 from CURRENT PRICE LEVELS (not Feb 28 baseline).
+// Sources: BlackRock Weekly (Mar 20), Berkshire Edge Gulf War analogue,
+//          RBC Wealth Management 20-conflict study, Schwab market update (Mar 28),
+//          CBS/AP live market data, Macquarie $200/bbl tail scenario.
+//
+// KEY CALIBRATION FACTS (as of Mar 28 2026):
+//   SPX ~6,368 (-8.7% from Jan ATH, -7% from pre-war). 5th losing week.
+//   Brent ~$107 (+$35 war premium vs $72 pre-war). Hit $119.50 peak Mar 8.
+//   10Y yield 4.43% (up from 3.97% pre-war). 5Y ~4.07% (up from 3.51%).
+//   DXY ~99.9. Mar 23 peace signal: Brent -10% in one session.
+//   BlackRock: "S&P 500 just 7% below record, disconnect vs macro shock."
+//   Gulf War I analogue: oil peak Oct 90 -> -30.7% then, SPX +11.8%.
+//
+// All pct values = % move from CURRENT live price over 7-day horizon.
+// ust5y values = basis points from current yield (~4.07%).
 const DEFAULT_MARKETS = {
   status_quo: {
-    spx:   { direction: "neutral", pct_mid: -0.5,  pct_low: -1.5,  pct_high: +0.5,  timeframe: 5, rationale: "Relief at succession certainty offsets ongoing conflict risk. No de-escalation catalyst.", ci_label: "-1.5% to +0.5%", isBps: false },
-    brent: { direction: "up",      pct_mid: +4.0,  pct_low: +2.0,  pct_high: +8.0,  timeframe: 7, rationale: "Sustained Hormuz risk premium. New leader continuity means no supply normalisation.", ci_label: "+2% to +8%", isBps: false },
-    ust5y: { direction: "neutral", pct_mid: +3,    pct_low: -5,    pct_high: +8,    timeframe: 5, rationale: "No flight-to-safety driver. 5Y yield stays range-bound.", ci_label: "-5bps to +8bps", isBps: true },
-    dxy:   { direction: "up",      pct_mid: +0.4,  pct_low: +0.1,  pct_high: +0.9,  timeframe: 5, rationale: "Mild safe-haven bid maintained.", ci_label: "+0.1% to +0.9%", isBps: false },
+    // War continues, no new catalyst. Most of the shock already priced.
+    // BlackRock disconnect suggests modest additional SPX downside.
+    // Brent: war premium in place, slight upward drift on continued uncertainty.
+    // Yields: stagflation + war spending keeps upward pressure. No safety bid.
+    spx:   { direction: "down",    pct_mid: -1.5,  pct_low: -4.0,  pct_high: +1.0,  timeframe: 7, rationale: "War already priced -8.7% from ATH. BlackRock disconnect = modest further downside. 5th losing week pattern.", ci_label: "-4% to +1%", isBps: false },
+    brent: { direction: "up",      pct_mid: +3.0,  pct_low: -3.0,  pct_high: +8.0,  timeframe: 7, rationale: "Hormuz semi-closure sustained. War premium (~$35) largely in. Soft upward bias on continued uncertainty.", ci_label: "-3% to +8%", isBps: false },
+    ust5y: { direction: "up",      pct_mid: +8,    pct_low: -5,    pct_high: +18,   timeframe: 7, rationale: "War spending debate, weak Treasury auctions, soft Fed demand. Stagflation premium persists. Up 56bps from pre-war.", ci_label: "-5bps to +18bps", isBps: true },
+    dxy:   { direction: "neutral", pct_mid: +0.3,  pct_low: -0.5,  pct_high: +1.2,  timeframe: 5, rationale: "Safe-haven already partially in (+2.3% vs pre-war). Minimal additional move without new catalyst.", ci_label: "-0.5% to +1.2%", isBps: false },
   },
   military_junta: {
-    spx:   { direction: "down",  pct_mid: -4.0,  pct_low: -2.5,  pct_high: -6.5,  timeframe: 7, rationale: "Protracted conflict risk-off shock. SPX analogue: -3.1% week of Gulf War I.", ci_label: "-2.5% to -6.5%", isBps: false },
-    brent: { direction: "up",    pct_mid: +12.0, pct_low: +8.0,  pct_high: +18.0, timeframe: 7, rationale: "IRGC takeover raises Hormuz closure risk sharply. Strait carries ~21% global oil.", ci_label: "+8% to +18%", isBps: false },
-    ust5y: { direction: "down",  pct_mid: -20,   pct_low: -12,   pct_high: -28,   timeframe: 7, rationale: "Classic flight-to-safety bid. Historical: 5Y fell 15-25bps in week of Gulf War II.", ci_label: "-12bps to -28bps", isBps: true },
-    dxy:   { direction: "up",    pct_mid: +2.2,  pct_low: +1.2,  pct_high: +3.5,  timeframe: 7, rationale: "Strong safe-haven surge. Consistent with 2003 Iraq, 2019 Aramco strike episodes.", ci_label: "+1.2% to +3.5%", isBps: false },
+    // Houthis activate OR Hormuz fully closed. Incremental shock from already-elevated base.
+    // Berkshire Edge Path 3 (7% odds): Brent $125-170 avg, SPX -20-30% from ATH.
+    // From current levels that implies SPX -13% to -22% additional.
+    // Macquarie: $200/bbl if war to end-June = +87% from $107 current.
+    spx:   { direction: "down",  pct_mid: -10.0, pct_low: -6.0,  pct_high: -18.0, timeframe: 7, rationale: "Full Hormuz closure triggers recession pricing. BlackRock disconnect resolves violently. Berkshire Edge -20-30% from ATH.", ci_label: "-6% to -18%", isBps: false },
+    brent: { direction: "up",    pct_mid: +22.0, pct_low: +12.0, pct_high: +45.0, timeframe: 7, rationale: "Dual choke: Hormuz + Bab al-Mandab. From $107 -> $130-155 central, $200 Macquarie tail. 21% global oil at risk.", ci_label: "+12% to +45%", isBps: false },
+    ust5y: { direction: "down",  pct_mid: -30,   pct_low: -18,   pct_high: -45,   timeframe: 7, rationale: "Flight-to-safety overwhelms stagflation. Fed forced to signal cuts. Gulf War II: 5Y fell 20-25bps in week 1.", ci_label: "-18bps to -45bps", isBps: true },
+    dxy:   { direction: "up",    pct_mid: +3.0,  pct_low: +1.5,  pct_high: +5.5,  timeframe: 7, rationale: "Strong safe-haven surge. EM currencies crushed. Consistent with 2003 Iraq, 2019 Aramco precedents.", ci_label: "+1.5% to +5.5%", isBps: false },
   },
   reform: {
-    spx:   { direction: "up",   pct_mid: +2.0,  pct_low: +0.8,  pct_high: +3.5,  timeframe: 7, rationale: "De-escalation relief rally. Energy sector leads. Geopolitical risk premium unwinds.", ci_label: "+0.8% to +3.5%", isBps: false },
-    brent: { direction: "down", pct_mid: -7.0,  pct_low: -4.0,  pct_high: -11.0, timeframe: 7, rationale: "War premium unwinding. Potential Iranian supply return if sanctions partially lifted.", ci_label: "-4% to -11%", isBps: false },
-    ust5y: { direction: "up",   pct_mid: +10,   pct_low: +5,    pct_high: +18,   timeframe: 7, rationale: "Risk appetite returns, safe-haven unwind. 5Y yields rise as bonds sold.", ci_label: "+5bps to +18bps", isBps: true },
-    dxy:   { direction: "down", pct_mid: -1.1,  pct_low: -0.5,  pct_high: -1.8,  timeframe: 7, rationale: "Risk-on flows into EM and commodity currencies.", ci_label: "-0.5% to -1.8%", isBps: false },
+    // Ceasefire / Apr 6 Hormuz deal. Largest impact scenario from current levels.
+    // Mar 23 peace SIGNAL alone: Brent -10% in one session, SPX +2.5%.
+    // Full deal = full war premium unwind. Berkshire Edge Path 1B.
+    // Brent back toward $72-85 pre-war range over 7 days.
+    spx:   { direction: "up",   pct_mid: +8.0,  pct_low: +4.0,  pct_high: +13.0, timeframe: 7, rationale: "Full war premium unwind. Berkshire Edge Path 1B: oil breaks -> stocks stabilise fast. Gulf War I: SPX +13.6% once oil fell.", ci_label: "+4% to +13%", isBps: false },
+    brent: { direction: "down", pct_mid: -25.0, pct_low: -15.0, pct_high: -35.0, timeframe: 7, rationale: "War premium ($35) fully unwinds. Mar 23 signal = -10% in one session. Full deal -> $70-90 pre-war range. Immediate.", ci_label: "-15% to -35%", isBps: false },
+    ust5y: { direction: "up",   pct_mid: +20,   pct_low: +10,   pct_high: +35,   timeframe: 7, rationale: "Inflation expectations collapse as oil falls. Safety unwind. Risk-on bond selling. War risk premium exits.", ci_label: "+10bps to +35bps", isBps: true },
+    dxy:   { direction: "down", pct_mid: -2.5,  pct_low: -1.2,  pct_high: -4.0,  timeframe: 7, rationale: "Risk-on. EM and commodity currencies surge. Safe-haven unwind. Consistent with Gulf War I oil peak reversal.", ci_label: "-1.2% to -4%", isBps: false },
   },
   collapse: {
-    spx:   { direction: "mixed", pct_mid: +2.0, pct_low: -4.0,  pct_high: +6.0,  timeframe: 7, rationale: "Binary path: initial risk-off then sharp rally if pro-West transition confirmed.", ci_label: "-4% to +6% (path-dependent)", isBps: false },
-    brent: { direction: "down",  pct_mid: -8.0, pct_low: -3.0,  pct_high: -15.0, timeframe: 7, rationale: "Iran supply normalisation + Hormuz reopening. Short-term spike on chaos, net bearish.", ci_label: "-3% to -15%", isBps: false },
-    ust5y: { direction: "up",    pct_mid: +12,  pct_low: +5,    pct_high: +22,   timeframe: 7, rationale: "Post-chaos: inflation expectations ease as Iran supply returns. 5Y yields rise.", ci_label: "+5bps to +22bps", isBps: true },
-    dxy:   { direction: "down",  pct_mid: -1.6, pct_low: -0.5,  pct_high: -2.8,  timeframe: 7, rationale: "Strongest risk-on unwind. EM and oil-linked currencies outperform.", ci_label: "-0.5% to -2.8%", isBps: false },
+    // Regime falls. Initially chaotic, then large relief rally if pro-West transition.
+    // Path-dependent: initial selloff then sharp reversal. Biggest Brent downside.
+    // Iran supply normalisation + Hormuz reopening = structural oil supply increase.
+    spx:   { direction: "mixed", pct_mid: +3.0,  pct_low: -8.0,  pct_high: +12.0, timeframe: 7, rationale: "Highly path-dependent. Initial chaos -5-8% then sharp relief rally if pro-West transition. Net positive on 7-day.", ci_label: "-8% to +12% (path-dependent)", isBps: false },
+    brent: { direction: "down",  pct_mid: -30.0, pct_low: -20.0, pct_high: -40.0, timeframe: 7, rationale: "Largest oil downside. Iran supply (3.2mb/d) normalises + Hormuz reopens. Structural supply increase. $107 -> $65-85.", ci_label: "-20% to -40%", isBps: false },
+    ust5y: { direction: "up",    pct_mid: +25,   pct_low: +12,   pct_high: +40,   timeframe: 7, rationale: "Inflation expectations drop sharply on oil collapse. Risk-on bond selling. Largest safety unwind scenario.", ci_label: "+12bps to +40bps", isBps: true },
+    dxy:   { direction: "down",  pct_mid: -3.0,  pct_low: -1.5,  pct_high: -5.0,  timeframe: 7, rationale: "Strongest risk-on unwind of all scenarios. EM and oil-linked currencies (CAD, RUB, BRL) outperform sharply.", ci_label: "-1.5% to -5%", isBps: false },
   },
 };
+
 
 // ─── INDICATORS ───────────────────────────────────────────────────────────────
 const INDICATORS = {
@@ -355,8 +387,13 @@ function buildPrompt(checkedIndicators, militaryRisk, econTriggers, recentHeadli
 
   return (
     "Iran war analyst. Day " + daysSince + " (" + today + ").\n" +
-    "CONTEXT: IRGC controls succession. Hormuz ~closed. Apr6 Trump deadline. Houthis intact. " +
-    "Brent -20% on Mar23 peace signal.\n" +
+    "CALIBRATION (use these as anchors for market impact estimates):\n" +
+    "SPX -8.7% from Jan ATH, 5th losing week. Brent $107 (+$35 war premium). 10Y 4.43% (was 3.97%). DXY 99.9.\n" +
+    "Mar23 peace SIGNAL alone: Brent -10% in one session, SPX +2.5%. Full deal = much larger.\n" +
+    "Gulf War I analogue: oil -30.7%, SPX +11.8% once oil peaked and fell (DataTrek).\n" +
+    "BlackRock (Mar20): SPX -7% from pre-war, disconnect vs macro shock. Underweight long Treasuries.\n" +
+    "Macquarie tail: Brent $200/bbl if war to end-June. Berkshire Edge -20-30% SPX in severe scenario.\n" +
+    "IRGC controls succession. Hormuz ~closed. Apr6 Trump deadline. Houthis intact.\n" +
     "PRICES: " + prices + "\n" +
     "SIGNALS: " + signals + "\n" +
 
@@ -636,7 +673,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.19</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.20</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>

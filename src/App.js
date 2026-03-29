@@ -680,7 +680,7 @@ export default function App() {
         '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}},' +
         '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}}}' 
 
-All zeros are placeholders — replace with calibrated values from current prices.;
+All zeros are placeholders — replace with calibrated values from current prices.
 
       const response = await fetch("/api/analyze", {
         method: "POST",

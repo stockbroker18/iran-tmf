@@ -464,6 +464,8 @@ export default function App() {
   const [livePrices,     setLivePrices]     = useState({});
   const [priceLoading,   setPriceLoading]   = useState(false);
   const [priceFetched,   setPriceFetched]   = useState(null);
+  const [priceBasis,     setPriceBasis]     = useState({});   // basis tracking for derivative inference
+  const [priceMethods,   setPriceMethods]   = useState({});   // how each price was derived
   const [polyData,       setPolyData]       = useState(null);
   const [polyLoading,    setPolyLoading]    = useState(false);
 
@@ -473,31 +475,53 @@ export default function App() {
   const [aiError,        setAiError]        = useState(null);
   const [aiTriggerCount, setAiTriggerCount] = useState(0);
   const prevFlaggedCount                    = useRef(0);
+  const [calibration,    setCalibration]    = useState(() => {
+    // Load cached calibration from localStorage (persists across sessions)
+    try { const s = localStorage.getItem("iran_tmf_calibration"); return s ? JSON.parse(s) : null; }
+    catch { return null; }
+  });
+  const [calibLoading,   setCalibLoading]   = useState(false);
 
   // ── Live price fetch ──────────────────────────────────────────────────────
   const fetchPrices = useCallback(async () => {
     setPriceLoading(true);
     try {
-      const res  = await fetch("/api/prices");
+      // Pass last-known basis values so server can infer closed-market prices
+      const headers = { "Content-Type": "application/json" };
+      if (priceBasis.spxBasis  != null) headers["x-spx-basis"]   = priceBasis.spxBasis.toFixed(2);
+      if (priceBasis.zfPrice   != null) headers["x-zf-last"]     = priceBasis.zfPrice.toFixed(4);
+      if (priceBasis.ust5yYield != null) headers["x-ust5y-last"] = priceBasis.ust5yYield.toFixed(4);
+
+      const res  = await fetch("/api/prices", { headers });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      // Map api/prices response fields to our asset keys
+
       const results = {};
       if (data.spx   != null) results.spx   = data.spx;
       if (data.brent != null) results.brent = data.brent;
       if (data.ust5y != null) results.ust5y = data.ust5y;
       if (data.dxy   != null) results.dxy   = data.dxy;
+
       if (Object.keys(results).length > 0) {
         setLivePrices(results);
         setPriceFetched(new Date());
       }
+      if (data.basis)   setPriceBasis(data.basis);
+      if (data.methods) setPriceMethods(data.methods);
     } catch (err) {
       console.warn("Price fetch failed:", err.message);
     }
     setPriceLoading(false);
-  }, []);
+  }, [priceBasis]);
 
   useEffect(() => { fetchPrices(); }, [fetchPrices]);
+
+  // Run calibration once per day, after prices are available
+  useEffect(() => {
+    if (Object.keys(livePrices).length > 0) {
+      runCalibration(livePrices);
+    }
+  }, [livePrices, runCalibration]);
 
   // ── Polymarket odds fetch ─────────────────────────────────────────────────
   const fetchPolymarket = useCallback(async () => {
@@ -554,7 +578,17 @@ export default function App() {
   }, [fetchFeeds]);
 
   // ── AI Analysis ───────────────────────────────────────────────────────────
-  const runAiAnalysis = useCallback(async (items, currentChecked, currentMilitary, currentEcon, prices, poly) => {
+  const runAiAnalysis = useCallback(async (items, currentChecked, currentMilitary, currentEcon, prices, poly, force = false) => {
+    // Global throttle: refuse to fire if last call was < 55 minutes ago (cross-tab, cross-refresh)
+    if (!force) {
+      const lastCall = parseInt(localStorage.getItem("iran_tmf_last_ai_call") || "0");
+      const minsBetween = (Date.now() - lastCall) / 60000;
+      if (minsBetween < 55) {
+        console.log(`AI throttled — last call ${minsBetween.toFixed(1)} min ago, minimum 55 min`);
+        return;
+      }
+    }
+    localStorage.setItem("iran_tmf_last_ai_call", Date.now().toString());
     setAiLoading(true);
     setAiError(null);
     try {
@@ -599,14 +633,145 @@ export default function App() {
   }, [setChecked, setLastUpdate, setAiAnalysis]);
 
   // Auto-trigger AI on first feed load
-  // Keep a stable ref to latest runAiAnalysis so fetchFeeds can call it without deps issues
+  // ── Daily market calibration ─────────────────────────────────────────────
+  const runCalibration = useCallback(async (prices, force = false) => {
+    // Only run once per calendar day (stored in localStorage)
+    const today = new Date().toISOString().slice(0, 10);
+    if (!force) {
+      try {
+        const last = localStorage.getItem("iran_tmf_calib_date");
+        if (last === today) { console.log("Calibration already run today, skipping"); return; }
+      } catch {}
+    }
+    if (!prices || Object.keys(prices).length === 0) return; // need live prices first
+
+    setCalibLoading(true);
+    try {
+      const spx   = prices.spx   ? BASELINE.spx.fmt(prices.spx)     : "unavailable";
+      const brent = prices.brent ? BASELINE.brent.fmt(prices.brent)  : "unavailable";
+      const ust5y = prices.ust5y ? BASELINE.ust5y.fmt(prices.ust5y)  : "unavailable";
+      const dxy   = prices.dxy   ? BASELINE.dxy.fmt(prices.dxy)      : "unavailable";
+
+      const prompt =
+        "You are a quantitative market strategist calibrating scenario impact estimates for an Iran war risk dashboard.
+" +
+        "Today: " + today + ". This is an active conflict — US-Israeli strikes killed Khamenei Feb 28 2026.
+
+" +
+        "CURRENT LIVE PRICES (use these as the starting point for all projections):
+" +
+        "S&P 500: " + spx + " (was 6,878 pre-war, -7% from ATH)
+" +
+        "Brent Crude: " + brent + " (was $72.87 pre-war, ~$35 war premium already in)
+" +
+        "5Y Treasury Yield: " + ust5y + " (was 3.51% pre-war)
+" +
+        "DXY: " + dxy + " (was 97.65 pre-war)
+
+" +
+        "HISTORICAL CALIBRATION ANCHORS:
+" +
+        "- Mar 23 peace signal alone: Brent -10% in one session, SPX +2.5%
+" +
+        "- Gulf War I: oil -30.7% then, SPX +13.6% once oil peaked and fell
+" +
+        "- BlackRock (Mar 20): SPX disconnect vs macro shock, underweight long Treasuries
+" +
+        "- Macquarie tail: Brent $200/bbl if war extends to June
+" +
+        "- RBC: SPX avg -6% in 20 post-WWII conflicts, recovery in 28 days unless energy disrupted
+
+" +
+        "For each of the 4 scenarios below, estimate the 7-day % move FROM CURRENT PRICES.
+" +
+        "Note: most war shock is already priced — estimate the MARGINAL move from here.
+" +
+        "ust5y values are basis points (bps), all others are percentages.
+
+" +
+        "SCENARIOS:
+" +
+        "1. STATUS_QUO: War ongoing, IRGC in control, no new catalyst
+" +
+        "2. MILITARY_JUNTA: Houthis activate OR Hormuz fully closed, deeper escalation
+" +
+        "3. REFORM: Ceasefire deal, Hormuz reopens, Apr6 deadline met
+" +
+        "4. COLLAPSE: Regime falls, pro-West transition, Iran supply normalises
+
+" +
+        "Reply with ONLY valid JSON, no markdown:
+" +
+        '{"calibrated_at":"' + today + '","status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""}},' +
+        '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""}},' +
+        '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}},' +
+        '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}}}' +
+        "
+
+All zeros are placeholders — replace with calibrated values from current prices.";
+
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          max_tokens: 1200,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (!response.ok) throw new Error("Calibration API returned " + response.status);
+      const data = await response.json();
+      if (data?.error) throw new Error(data.error);
+      const text  = data.content?.map(b => b.text || "").join("") || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+
+      // Merge with DEFAULT_MARKETS structure (add isBps, timeframe, ci_label)
+      const merged = {};
+      ["status_quo","military_junta","reform","collapse"].forEach(sc => {
+        if (!parsed[sc]) return;
+        merged[sc] = {};
+        ["spx","brent","ust5y","dxy"].forEach(asset => {
+          const d = parsed[sc][asset];
+          if (!d) return;
+          const isBps = asset === "ust5y";
+          const lo = Math.min(d.pct_low, d.pct_high);
+          const hi = Math.max(d.pct_low, d.pct_high);
+          merged[sc][asset] = {
+            ...DEFAULT_MARKETS[sc][asset], // keep isBps, timeframe
+            pct_mid:   d.pct_mid,
+            pct_low:   lo,
+            pct_high:  hi,
+            direction: d.direction,
+            rationale: d.rationale,
+            ci_label:  isBps
+              ? lo.toFixed(0) + "bps to " + hi.toFixed(0) + "bps"
+              : lo.toFixed(1) + "% to +" + hi.toFixed(1) + "%",
+          };
+        });
+      });
+
+      const result = { ...parsed, markets: merged, calibratedAt: new Date().toISOString() };
+      setCalibration(result);
+      try {
+        localStorage.setItem("iran_tmf_calibration", JSON.stringify(result));
+        localStorage.setItem("iran_tmf_calib_date", today);
+      } catch {}
+
+    } catch (err) {
+      console.warn("Calibration failed:", err.message);
+    }
+    setCalibLoading(false);
+  }, []);
+
+  // ── Keep a stable ref to latest runAiAnalysis so fetchFeeds can call it without deps issues
   const runAiRef = useRef(null);
   useEffect(() => { runAiRef.current = () => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData); },
     [feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, runAiAnalysis]);
 
   // Auto-trigger AI every 5 minutes via stable interval
   useEffect(() => {
-    const id = setInterval(() => { if (runAiRef.current && !aiLoading) runAiRef.current(); }, 30 * 60 * 1000);
+    const id = setInterval(() => { if (runAiRef.current && !aiLoading) runAiRef.current(); }, 60 * 60 * 1000);
     return () => clearInterval(id);
   }, [aiLoading]);
 
@@ -638,7 +803,9 @@ export default function App() {
   SCENARIO_DEFS.forEach(s => { staticProbs[s.id] = Math.round((staticScores[s.id] / staticTotal) * 100); });
 
   const probabilities = aiProbs || staticProbs;
-  const marketData    = aiMarkets || DEFAULT_MARKETS;
+  // Priority: AI markets (from Groq analysis) > calibration (daily) > static defaults
+  const calibMarkets  = calibration?.markets || null;
+  const marketData    = aiMarkets || calibMarkets || DEFAULT_MARKETS;
 
   // Build full scenario objects merging static defs with dynamic data
   const SCENARIOS = SCENARIO_DEFS.map(s => ({
@@ -673,7 +840,7 @@ export default function App() {
         <div>
           <div style={{ color: "#0f0", fontSize: 18, fontWeight: 700, letterSpacing: 3 }}>IRAN TMF</div>
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 2 }}>
-            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.20</span>
+            TRANSITION MONITORING FRAMEWORK · OSINT + GROQ AI · <span style={{ color: "#0f06" }}>v1.22</span>
             {aiAnalysis && <span style={{ color: "#0f0", marginLeft: 8 }}>· GROQ ACTIVE ({aiTriggerCount} analyses)</span>}
           </div>
         </div>
@@ -722,7 +889,7 @@ export default function App() {
                 <span style={{ color: "#0f05", fontSize: 10, marginLeft: 8 }}>· auto-runs every 5 min</span>
               </div>
               <button
-                onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData)}
+                onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, true)}
                 disabled={aiLoading}
                 style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "5px 14px", borderRadius: 3, fontSize: 10, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 1 }}>
                 {aiLoading ? "◈ ANALYSING..." : "◈ RUN GROQ ANALYSIS"}
@@ -850,6 +1017,11 @@ export default function App() {
                             </div>
                           : <div style={{ color: "#333", fontSize: 9, marginTop: 2 }}>market closed · Feb 28 ref</div>
                         }
+                        {priceMethods[asset] && (
+                          <div style={{ color: "#2a3a2a", fontSize: 8, marginTop: 2, fontStyle: "italic" }}>
+                            {priceMethods[asset]}
+                          </div>
+                        )}
                       </div>
 
                       {/* Divider */}
@@ -932,7 +1104,7 @@ export default function App() {
                   </div>
                 </div>
                 <button
-                  onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData)}
+                  onClick={() => runAiAnalysis(feedItems, checked, militaryRisk, econTriggers, livePrices, polyData, true)}
                   disabled={aiLoading}
                   style={{ background: aiLoading ? "transparent" : "#0f011", border: "1px solid #0f0", color: "#0f0", padding: "8px 20px", borderRadius: 3, fontSize: 11, cursor: aiLoading ? "not-allowed" : "pointer", fontFamily: "monospace", letterSpacing: 2, boxShadow: aiLoading ? "none" : "0 0 12px #0f04" }}>
                   {aiLoading ? "◈ ANALYSING IN PROGRESS..." : "◈ RUN FULL GROQ ANALYSIS NOW"}
@@ -1029,7 +1201,21 @@ export default function App() {
           <div>
             <LivePriceTicker prices={livePrices} loading={priceLoading} lastFetched={priceFetched} onRefresh={fetchPrices} />
             <div style={{ ...card, background: "#05080a", borderColor: "#0f03" }}>
-              <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2, marginBottom: 10 }}>CURRENT LIVE PRICES</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ color: "#0f0", fontSize: 11, letterSpacing: 2 }}>CURRENT LIVE PRICES · Feb 28 event-day shown for reference</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {calibLoading && <span style={{ color: "#f5a623", fontSize: 9, animation: "pulse 1s infinite" }}>◈ CALIBRATING...</span>}
+                  {calibration && !calibLoading && (
+                    <span style={{ color: "#0f05", fontSize: 9, border: "1px solid #0f03", padding: "2px 6px", borderRadius: 3 }}>
+                      ◈ calibrated {new Date(calibration.calibratedAt).toLocaleDateString()} {new Date(calibration.calibratedAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+                      {aiMarkets ? " · AI override active" : calibMarkets ? " · daily cal active" : ""}
+                    </span>
+                  )}
+                  {!calibration && !calibLoading && (
+                    <span style={{ color: "#333", fontSize: 9 }}>static defaults · calibration pending</span>
+                  )}
+                </div>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                 {Object.entries(BASELINE).map(([asset, b]) => {
                   const live = livePrices[asset];
@@ -1177,7 +1363,7 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · feeds + Groq analysis auto-refresh every 30 min</div>}
+            {lastFetch && <div style={{ color: "#444", fontSize: 10, marginBottom: 8, textAlign: "right" }}>Last fetched {lastFetch.toLocaleTimeString()} · feeds refresh every 30 min · Groq analysis every 60 min (throttled)</div>}
             <div style={{ color: "#2ca5e066", fontSize: 10, marginBottom: 8, background: "#0d1a2011", border: "1px solid #2ca5e022", borderRadius: 3, padding: "5px 10px" }}>
               ✈ Telegram feeds (Vahid Online, Iran Intl) use the public RSSHub bridge. If they show no items, the public bridge may be rate-limited — feeds will retry on next refresh.
             </div>

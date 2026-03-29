@@ -653,60 +653,33 @@ export default function App() {
       const dxy   = prices.dxy   ? BASELINE.dxy.fmt(prices.dxy)      : "unavailable";
 
       const prompt =
-        "You are a quantitative market strategist calibrating scenario impact estimates for an Iran war risk dashboard.
-" +
-        "Today: " + today + ". This is an active conflict — US-Israeli strikes killed Khamenei Feb 28 2026.
-
-" +
-        "CURRENT LIVE PRICES (use these as the starting point for all projections):
-" +
-        "S&P 500: " + spx + " (was 6,878 pre-war, -7% from ATH)
-" +
-        "Brent Crude: " + brent + " (was $72.87 pre-war, ~$35 war premium already in)
-" +
-        "5Y Treasury Yield: " + ust5y + " (was 3.51% pre-war)
-" +
-        "DXY: " + dxy + " (was 97.65 pre-war)
-
-" +
-        "HISTORICAL CALIBRATION ANCHORS:
-" +
-        "- Mar 23 peace signal alone: Brent -10% in one session, SPX +2.5%
-" +
-        "- Gulf War I: oil -30.7% then, SPX +13.6% once oil peaked and fell
-" +
-        "- BlackRock (Mar 20): SPX disconnect vs macro shock, underweight long Treasuries
-" +
-        "- Macquarie tail: Brent $200/bbl if war extends to June
-" +
-        "- RBC: SPX avg -6% in 20 post-WWII conflicts, recovery in 28 days unless energy disrupted
-
-" +
-        "For each of the 4 scenarios below, estimate the 7-day % move FROM CURRENT PRICES.
-" +
-        "Note: most war shock is already priced — estimate the MARGINAL move from here.
-" +
-        "ust5y values are basis points (bps), all others are percentages.
-
-" +
-        "SCENARIOS:
-" +
-        "1. STATUS_QUO: War ongoing, IRGC in control, no new catalyst
-" +
-        "2. MILITARY_JUNTA: Houthis activate OR Hormuz fully closed, deeper escalation
-" +
-        "3. REFORM: Ceasefire deal, Hormuz reopens, Apr6 deadline met
-" +
-        "4. COLLAPSE: Regime falls, pro-West transition, Iran supply normalises
-
-" +
-        "Reply with ONLY valid JSON, no markdown:
-" +
+        "You are a quantitative market strategist calibrating scenario impact estimates for an Iran war risk dashboard." +
+        "Today: " + today + ". This is an active conflict — US-Israeli strikes killed Khamenei Feb 28 2026." +
+        "CURRENT LIVE PRICES (use these as the starting point for all projections):" +
+        "S&P 500: " + spx + " (was 6,878 pre-war, -7% from ATH)" +
+        "Brent Crude: " + brent + " (was $72.87 pre-war, ~$35 war premium already in)" +
+        "5Y Treasury Yield: " + ust5y + " (was 3.51% pre-war)" +
+        "DXY: " + dxy + " (was 97.65 pre-war)" +
+        "HISTORICAL CALIBRATION ANCHORS:" +
+        "- Mar 23 peace signal alone: Brent -10% in one session, SPX +2.5%" +
+        "- Gulf War I: oil -30.7% then, SPX +13.6% once oil peaked and fell" +
+        "- BlackRock (Mar 20): SPX disconnect vs macro shock, underweight long Treasuries" +
+        "- Macquarie tail: Brent $200/bbl if war extends to June" +
+        "- RBC: SPX avg -6% in 20 post-WWII conflicts, recovery in 28 days unless energy disrupted" +
+        "For each of the 4 scenarios below, estimate the 7-day % move FROM CURRENT PRICES." +
+        "Note: most war shock is already priced — estimate the MARGINAL move from here." +
+        "ust5y values are basis points (bps), all others are percentages." +
+        "SCENARIOS:" +
+        "1. STATUS_QUO: War ongoing, IRGC in control, no new catalyst" +
+        "2. MILITARY_JUNTA: Houthis activate OR Hormuz fully closed, deeper escalation" +
+        "3. REFORM: Ceasefire deal, Hormuz reopens, Apr6 deadline met" +
+        "4. COLLAPSE: Regime falls, pro-West transition, Iran supply normalises" +
+        "Reply with ONLY valid JSON, no markdown:" +
         '{"calibrated_at":"' + today + '","status_quo":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"neutral","rationale":""}},' +
         '"military_junta":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""}},' +
         '"reform":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}},' +
         '"collapse":{"spx":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"mixed","rationale":""},"brent":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""},"ust5y":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"up","rationale":""},"dxy":{"pct_mid":0,"pct_low":0,"pct_high":0,"direction":"down","rationale":""}}}' +
-        ""
+        "
 
 All zeros are placeholders — replace with calibrated values from current prices.";
 
